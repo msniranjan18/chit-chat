@@ -160,7 +160,7 @@ func (s *Store) SearchUsers(queryStr string, limit int) ([]models.User, error) {
 
 		// Convert NullString to regular string
 		if avatarURL.Valid {
-			user.AvatarURL = avatarURL.String
+			user.AvatarURL = &avatarURL.String
 		}
 
 		users = append(users, user)
