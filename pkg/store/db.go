@@ -7,6 +7,9 @@ import (
 	"log/slog"
 	"time"
 
+	postgresql "github.com/msniranjan18/common/postgres"
+	redisutil "github.com/msniranjan18/common/redis"
+
 	"github.com/go-redis/redis/v8"
 	_ "github.com/lib/pq"
 )
@@ -20,49 +23,22 @@ type Store struct {
 
 func NewStore(ctx context.Context, pgConnStr, redisAddr string, logger *slog.Logger) (*Store, error) {
 	var db *sql.DB
+	var rdb *redis.Client
 	var err error
-
-	logger.Info("Initializing store", "postgres_conn", pgConnStr[:min(len(pgConnStr), 50)], "redis_addr", redisAddr)
-
-	// 1. Setup PostgreSQL
-	// Retry Postgres connection 5 times
-	for i := 0; i < 5; i++ {
-		db, err = sql.Open("postgres", pgConnStr)
-		if err == nil {
-			err = db.Ping()
-			if err == nil {
-				logger.Info("PostgreSQL connection successful", "attempt", i+1)
-				break
-			}
-		}
-		logger.Warn("Waiting for PostgreSQL...", "attempt", i+1, "max_attempts", 5, "error", err)
-		time.Sleep(2 * time.Second)
-	}
+	db, err = postgresql.InitDB(pgConnStr)
 	if err != nil {
 		logger.Error("Failed to connect to PostgreSQL", "error", err)
 		return nil, err
 	}
-
-	// Test PostgreSQL connection
-	if err := db.Ping(); err != nil {
-		logger.Error("Failed to ping PostgreSQL", "error", err)
-		return nil, fmt.Errorf("failed to ping PostgreSQL: %w", err)
+	if db != nil {
+		logger.Info("PostgreSQL connection successful")
+		logger.Debug("PostgreSQL connection pool configured", "max_open_conns", 25, "max_idle_conns", 5, "conn_max_lifetime", "5m")
 	}
 
-	// Set connection pool settings
-	db.SetMaxOpenConns(25)
-	db.SetMaxIdleConns(5)
-	db.SetConnMaxLifetime(5 * time.Minute)
-
-	logger.Debug("PostgreSQL connection pool configured",
-		"max_open_conns", 25, "max_idle_conns", 5, "conn_max_lifetime", "5m")
-
 	// Connect to Redis
-	rdb := InitRedis(redisAddr, logger)
-
-	// Verify Redis connection
-	if err := rdb.Ping(ctx).Err(); err != nil {
-		logger.Error("Failed to ping Redis", "error", err)
+	rdb, err = redisutil.InitRedis(redisAddr)
+	if err != nil {
+		logger.Error("Failed to connect to Redis", "error", err)
 		return nil, err
 	}
 

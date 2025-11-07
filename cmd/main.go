@@ -8,15 +8,22 @@ import (
 	"time"
 
 	"github.com/msniranjan18/chit-chat/config"
-	"github.com/msniranjan18/chit-chat/pkg/auth"
+
+	"github.com/msniranjan18/common/jwt"
+	"github.com/msniranjan18/common/middleware/logging"
+
 	"github.com/msniranjan18/chit-chat/pkg/hub"
-	"github.com/msniranjan18/chit-chat/pkg/middleware"
 	"github.com/msniranjan18/chit-chat/pkg/routes"
 	"github.com/msniranjan18/chit-chat/pkg/store"
 
 	_ "github.com/msniranjan18/chit-chat/docs"
 )
 
+// @title           Chit-Chat API
+// @version         1.0
+// @description     This is a real-time chat application server.
+// @host            localhost:8080
+// @BasePath        /
 func main() {
 	// Initialize structured logger
 	logger := setupLogger()
@@ -59,7 +66,7 @@ func main() {
 
 	// 2. Initialize JWT authentication
 	slog.Info("Initializing authentication...")
-	auth.InitJWT(cfg.JWT.Secret)
+	jwt.InitJWT(cfg.JWT.Secret)
 
 	// 3. Initialize WebSocket Hub
 	slog.Info("Initializing WebSocket hub...")
@@ -73,7 +80,7 @@ func main() {
 	router := routes.NewRouter(wsHub, storage, logger)
 
 	// Apply middleware
-	handler := middleware.LoggingMiddleware(router, logger)
+	handler := logging.LoggingMiddleware(router, logger)
 
 	// 5. Start HTTP server
 	server := &http.Server{

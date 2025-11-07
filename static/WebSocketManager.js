@@ -1,6 +1,8 @@
 // WebSocketManager.js - Contains WebSocket related functions
 class WebSocketManager {
-    constructor() {}
+    constructor(appInstance) {
+        this.app = appInstance
+    }
 
     connectWebSocket() {
         if (!this.app.token) return;
@@ -102,3 +104,8 @@ class WebSocketManager {
         }
     }
 }
+
+// Export for use in other modules
+export { WebSocketManager };
+
+window.WebSocketManager = WebSocketManager;

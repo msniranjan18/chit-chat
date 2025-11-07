@@ -4,6 +4,7 @@ import (
 	"time"
 )
 
+// @name GroupSettings
 type GroupSettings struct {
 	ChatID              string     `json:"chat_id" db:"chat_id"`
 	IsPublic            bool       `json:"is_public" db:"is_public"`
@@ -18,6 +19,7 @@ type GroupSettings struct {
 	UpdatedAt           time.Time  `json:"updated_at" db:"updated_at"`
 }
 
+// @name GroupInvite
 type GroupInvite struct {
 	ID          string     `json:"id" db:"id"`
 	GroupID     string     `json:"group_id" db:"group_id"`
@@ -31,6 +33,7 @@ type GroupInvite struct {
 	IsActive    bool       `json:"is_active" db:"is_active"`
 }
 
+// @name GroupJoinRequest
 type GroupJoinRequest struct {
 	ID          string    `json:"id" db:"id"`
 	GroupID     string    `json:"group_id" db:"group_id"`
@@ -42,6 +45,7 @@ type GroupJoinRequest struct {
 	UpdatedAt   time.Time `json:"updated_at" db:"updated_at"`
 }
 
+// @name GroupCreateRequest
 type GroupCreateRequest struct {
 	Name        string                `json:"name"`
 	Description *string               `json:"description,omitempty"`
@@ -51,6 +55,7 @@ type GroupCreateRequest struct {
 	Settings    *GroupSettingsRequest `json:"settings,omitempty"`
 }
 
+// @name GroupSettingsRequest
 type GroupSettingsRequest struct {
 	IsPublic            *bool `json:"is_public,omitempty"`
 	AdminsCanEdit       *bool `json:"admins_can_edit,omitempty"`
@@ -60,6 +65,7 @@ type GroupSettingsRequest struct {
 	SlowModeDelay       *int  `json:"slow_mode_delay,omitempty"`
 }
 
+// @name GroupUpdateRequest
 type GroupUpdateRequest struct {
 	Name        *string               `json:"name,omitempty"`
 	Description *string               `json:"description,omitempty"`
@@ -67,6 +73,7 @@ type GroupUpdateRequest struct {
 	Settings    *GroupSettingsRequest `json:"settings,omitempty"`
 }
 
+// @name GroupInviteRequest
 type GroupInviteRequest struct {
 	GroupID   string   `json:"group_id"`
 	UserIDs   []string `json:"user_ids,omitempty"`
@@ -74,12 +81,14 @@ type GroupInviteRequest struct {
 	ExpiresIn *int     `json:"expires_in,omitempty"` // hours
 }
 
+// @name GroupJoinRequestResponse
 type GroupJoinRequestResponse struct {
 	GroupID string `json:"group_id"`
 	UserID  string `json:"user_id"`
 	Action  string `json:"action"` // approve, reject
 }
 
+// @name GroupStats
 type GroupStats struct {
 	GroupID       string    `json:"group_id"`
 	TotalMembers  int       `json:"total_members"`
@@ -91,6 +100,7 @@ type GroupStats struct {
 	UpdatedAt     time.Time `json:"updated_at"`
 }
 
+// @name GroupResponse
 type GroupResponse struct {
 	Group    Chat          `json:"group"`
 	Members  []ChatMember  `json:"members"`

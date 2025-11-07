@@ -12,6 +12,7 @@ const (
 	ChatTypeChannel ChatType = "channel"
 )
 
+// @name Chat
 type Chat struct {
 	ID           string    `json:"id" db:"id"`
 	Type         ChatType  `json:"type" db:"type"`
@@ -29,6 +30,7 @@ type Chat struct {
 	IsPinned     bool      `json:"is_pinned" db:"is_pinned"`
 }
 
+// @name ChatMember
 type ChatMember struct {
 	ChatID      string     `json:"chat_id" db:"chat_id"`
 	UserID      string     `json:"user_id" db:"user_id"`
@@ -50,6 +52,7 @@ const (
 	ChatMemberRoleViewer ChatMemberRole = "viewer"
 )
 
+// @name ChatRequest
 type ChatRequest struct {
 	Type        ChatType `json:"type"`
 	Name        *string  `json:"name,omitempty"`
@@ -58,6 +61,7 @@ type ChatRequest struct {
 	UserIDs     []string `json:"user_ids"` // For direct chat: [other_user_id], For group: all members
 }
 
+// @name ChatUpdateRequest
 type ChatUpdateRequest struct {
 	Name        *string `json:"name,omitempty"`
 	Description *string `json:"description,omitempty"`
@@ -67,18 +71,21 @@ type ChatUpdateRequest struct {
 	IsPinned    *bool   `json:"is_pinned,omitempty"`
 }
 
+// @name ChatMemberRequest
 type ChatMemberRequest struct {
 	UserID      string  `json:"user_id"`
 	Role        *string `json:"role,omitempty"`
 	DisplayName *string `json:"display_name,omitempty"`
 }
 
+// @name ChatResponse
 type ChatResponse struct {
 	Chat    Chat         `json:"chat"`
 	Members []ChatMember `json:"members,omitempty"`
 	Users   []User       `json:"users,omitempty"`
 }
 
+// @name ChatListResponse
 type ChatListResponse struct {
 	Chats []Chat `json:"chats"`
 	Total int    `json:"total"`
@@ -86,6 +93,7 @@ type ChatListResponse struct {
 	Limit int    `json:"limit"`
 }
 
+// @name ChatSearchRequest
 type ChatSearchRequest struct {
 	Query string    `json:"query"`
 	Type  *ChatType `json:"type,omitempty"`

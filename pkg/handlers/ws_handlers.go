@@ -5,7 +5,9 @@ import (
 	"net/http"
 
 	"github.com/gorilla/websocket"
-	"github.com/msniranjan18/chit-chat/pkg/auth"
+
+	"github.com/msniranjan18/common/jwt"
+
 	"github.com/msniranjan18/chit-chat/pkg/hub"
 )
 
@@ -28,6 +30,14 @@ func NewWSHandler(hub *hub.Hub, logger *slog.Logger) *WSHandler {
 	return &WSHandler{hub: hub, logger: logger}
 }
 
+// HandleWS godoc
+// @Summary      Establish WebSocket connection
+// @Description  Upgrades the HTTP connection to a WebSocket for real-time messaging. Requires a valid JWT token as a query parameter.
+// @Tags         websocket
+// @Param        token  query  string  true  "Valid JWT Token"
+// @Success      101    {string} string "Switching Protocols"
+// @Failure      401    {object} map[string]string "Invalid or missing token"
+// @Router       /ws [get]
 func (h *WSHandler) HandleWS(w http.ResponseWriter, r *http.Request) {
 	// Extract token from query parameters
 	token := r.URL.Query().Get("token")
@@ -40,7 +50,7 @@ func (h *WSHandler) HandleWS(w http.ResponseWriter, r *http.Request) {
 	h.logger.Debug("HandleWS: validating token")
 
 	// Validate token
-	claims, err := auth.ValidateJWT(token)
+	claims, err := jwt.ValidateJWT(token)
 	if err != nil {
 		h.logger.Warn("HandleWS: invalid token", "error", err)
 		http.Error(w, "Invalid token", http.StatusUnauthorized)

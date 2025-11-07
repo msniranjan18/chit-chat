@@ -6,7 +6,8 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/msniranjan18/chit-chat/pkg/auth"
+	"github.com/msniranjan18/common/middleware/auth"
+
 	"github.com/msniranjan18/chit-chat/pkg/models"
 	"github.com/msniranjan18/chit-chat/pkg/store"
 )
@@ -20,6 +21,19 @@ func NewMessageHandler(store *store.Store, logger *slog.Logger) *MessageHandler 
 	return &MessageHandler{store: store, logger: logger}
 }
 
+// GetMessages godoc
+// @Summary      Get messages from a chat
+// @Description  Retrieve a paginated list of messages for a specific chat. Requires chat_id and supports pagination via 'before' (message_id) and 'limit'.
+// @Tags         messages
+// @Produce      json
+// @Param        chat_id  query     string  true   "Chat ID"
+// @Param        before   query     string  false  "Message ID to get messages before (for pagination)"
+// @Param        limit    query     int     false  "Number of messages to return (default 20, max 50)"
+// @Success      200      {array}   models.Message
+// @Failure      400      {object}  map[string]string "Chat ID required"
+// @Failure      401      {object}  map[string]string "Unauthorized"
+// @Failure      404      {object}  map[string]string "Chat not found or access denied"
+// @Router       /api/messages [get]
 func (h *MessageHandler) GetMessages(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		h.logger.Warn("GetMessages: method not allowed", "method", r.Method)
@@ -125,6 +139,17 @@ func (h *MessageHandler) GetMessages(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
+// SendMessage godoc
+// @Summary      Send a message
+// @Description  Send a new message to a specific chat (Direct or Group).
+// @Tags         messages
+// @Accept       json
+// @Produce      json
+// @Param        message  body      models.MessageRequest  true  "Message Details"
+// @Success      201      {object}  models.Message
+// @Failure      400      {object}  map[string]string "Invalid request body"
+// @Failure      404      {object}  map[string]string "Chat not found"
+// @Router       /api/messages [post]
 func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		h.logger.Warn("SendMessage: method not allowed", "method", r.Method)
@@ -237,6 +262,18 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
+// UpdateMessage godoc
+// @Summary      Edit a message
+// @Description  Update the text content of a previously sent message. Only the sender can edit their own message.
+// @Tags         messages
+// @Accept       json
+// @Produce      json
+// @Param        id       path      string                      true  "Message ID"
+// @Param        updates  body      models.MessageUpdateRequest  true  "New Content"
+// @Success      200      {object}  models.Message
+// @Failure      403      {object}  map[string]string "Forbidden - Not the sender"
+// @Failure      404      {object}  map[string]string "Message not found"
+// @Router       /api/messages/{id} [put]
 func (h *MessageHandler) UpdateMessage(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPut && r.Method != http.MethodPatch {
 		h.logger.Warn("UpdateMessage: method not allowed", "method", r.Method)
@@ -324,6 +361,15 @@ func (h *MessageHandler) UpdateMessage(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(updatedMessage)
 }
 
+// DeleteMessage godoc
+// @Summary      Delete a message
+// @Description  Permanently delete a message for all participants.
+// @Tags         messages
+// @Param        id   path      string  true  "Message ID"
+// @Success      204  "No Content"
+// @Failure      401  {object}  map[string]string "Unauthorized"
+// @Failure      404  {object}  map[string]string "Message not found"
+// @Router       /api/messages/{id} [delete]
 func (h *MessageHandler) DeleteMessage(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodDelete {
 		h.logger.Warn("DeleteMessage: method not allowed", "method", r.Method)
@@ -378,6 +424,13 @@ func (h *MessageHandler) DeleteMessage(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// MarkAsRead godoc
+// @Summary      Mark message as read
+// @Description  Updates the status of a specific message to 'read'.
+// @Tags         messages
+// @Param        id   path      string  true  "Message ID"
+// @Success      200  {object}  map[string]string "Marked as read"
+// @Router       /api/messages/{id}/read [post]
 func (h *MessageHandler) UpdateMessageStatus(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		h.logger.Warn("UpdateMessageStatus: method not allowed", "method", r.Method)
@@ -433,6 +486,17 @@ func (h *MessageHandler) UpdateMessageStatus(w http.ResponseWriter, r *http.Requ
 	})
 }
 
+// SearchMessages godoc
+// @Summary      Search messages
+// @Description  Search for text within messages of a specific chat.
+// @Tags         messages
+// @Produce      json
+// @Param        chat_id  query     string  true   "Chat ID"
+// @Param        q        query     string  true   "Search query"
+// @Param        limit    query     int     false  "Limit results"
+// @Success      200      {array}   models.Message
+// @Failure      400      {object}  map[string]string "Query required"
+// @Router       /api/messages/search [get]
 func (h *MessageHandler) SearchMessages(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		h.logger.Warn("SearchMessages: method not allowed", "method", r.Method)

@@ -1,3 +1,8 @@
+// Import the classes
+import { UIManager } from './UIManager.js';
+import { ChatManager } from './ChatManager.js';
+import { WebSocketManager } from './WebSocketManager.js';
+
 // app.js - Main entry point with minimal code
 class ChitChat {
     constructor() {
@@ -12,14 +17,14 @@ class ChitChat {
         this.typingTimeout = null;
         
         // Initialize managers
-        this.uiManager = new UIManager();
-        this.chatManager = new ChatManager();
-        this.wsManager = new WebSocketManager();
+        this.uiManager = new UIManager(this);
+        this.chatManager = new ChatManager(this);
+        this.wsManager = new WebSocketManager(this);
         
         // Pass app reference to managers
-        this.uiManager.app = this;
-        this.chatManager.app = this;
-        this.wsManager.app = this;
+        // this.uiManager.app = this;
+        // this.chatManager.app = this;
+        // this.wsManager.app = this;
         
         this.init();
     }
@@ -292,3 +297,6 @@ class ChitChat {
 document.addEventListener('DOMContentLoaded', () => {
     window.chitchat = new ChitChat();
 });
+
+// Export for potential use elsewhere
+export { ChitChat };

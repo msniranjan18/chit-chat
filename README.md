@@ -6,6 +6,8 @@
 ![Build Status](https://img.shields.io/badge/build-passing-brightgreen)
 
 ChitChat is a feature-rich, real-time messaging application built with Go that replicates core WhatsApp/Telegram functionality. It supports one-to-one chats, group chats, message receipts, typing indicators, and more.
+Swagger documentation generated in docs/
+Access it at: http://localhost:8080/swagger/index.html
 
 ## 🌟 Features
 

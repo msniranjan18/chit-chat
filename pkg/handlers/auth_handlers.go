@@ -9,7 +9,10 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/msniranjan18/chit-chat/pkg/auth"
+
+	"github.com/msniranjan18/common/jwt"
+	"github.com/msniranjan18/common/middleware/auth"
+
 	"github.com/msniranjan18/chit-chat/pkg/models"
 	"github.com/msniranjan18/chit-chat/pkg/store"
 )
@@ -23,6 +26,18 @@ func NewAuthHandler(store *store.Store, logger *slog.Logger) *AuthHandler {
 	return &AuthHandler{store: store, logger: logger}
 }
 
+// Register godoc
+// @Summary      Register or login a user
+// @Description  Creates a new user profile or logs in an existing user based on their phone number. Returns a JWT token and user details.
+// @Tags         auth
+// @Accept       json
+// @Produce      json
+// @Param        request body      models.AuthRequest  true  "Registration/Login Details"
+// @Success      200     {object}  models.AuthResponse "Successful login for existing user"
+// @Success      201     {object}  models.AuthResponse "Successful registration for new user"
+// @Failure      400     {object}  map[string]string "Invalid request body or phone number"
+// @Failure      500     {object}  map[string]string "Internal server error"
+// @Router       /api/auth/register [post]
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		h.logger.Warn("Register: method not allowed", "method", r.Method)
@@ -101,7 +116,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Generate JWT token
-	token, expiresAt, err := auth.GenerateJWT(user.ID, sessionID)
+	token, expiresAt, err := jwt.GenerateJWT(user.ID, sessionID)
 	if err != nil {
 		h.logger.Error("Register: failed to generate JWT", "error", err, "user_id", user.ID)
 		http.Error(w, "Failed to generate token", http.StatusInternalServerError)
@@ -122,6 +137,17 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
+// Login godoc
+// @Summary      Login user
+// @Description  Authenticates a user by phone number and returns a new session token.
+// @Tags         auth
+// @Accept       json
+// @Produce      json
+// @Param        request body      models.AuthRequest  true  "Login Details"
+// @Success      200     {object}  models.AuthResponse
+// @Failure      404     {object}  map[string]string "User not found"
+// @Failure      500     {object}  map[string]string "Internal server error"
+// @Router       /api/auth/login [post]
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		h.logger.Warn("Login: method not allowed", "method", r.Method)
@@ -172,7 +198,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Generate JWT token
-	token, expiresAt, err := auth.GenerateJWT(user.ID, sessionID)
+	token, expiresAt, err := jwt.GenerateJWT(user.ID, sessionID)
 	if err != nil {
 		h.logger.Error("Login: failed to generate JWT", "error", err, "user_id", user.ID)
 		http.Error(w, "Failed to generate token", http.StatusInternalServerError)
@@ -193,6 +219,13 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
+// Logout godoc
+// @Summary      Logout user
+// @Description  Deletes the current user session and invalidates the session ID.
+// @Tags         auth
+// @Success      200     {object}  map[string]string "Logged out successfully"
+// @Failure      401     {object}  map[string]string "Not authenticated"
+// @Router       /api/auth/logout [post]
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	// Get session ID from context
 	sessionID := auth.GetSessionID(r.Context())
@@ -219,6 +252,14 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// Verify godoc
+// @Summary      Verify authentication
+// @Description  Checks if the current JWT token is valid and returns the authenticated user's profile.
+// @Tags         auth
+// @Produce      json
+// @Success      200     {object}  models.User
+// @Failure      401     {object}  map[string]string "Not authenticated"
+// @Router       /api/auth/verify [get]
 func (h *AuthHandler) Verify(w http.ResponseWriter, r *http.Request) {
 	// Get user ID from context
 	userID := auth.GetUserID(r.Context())
@@ -244,6 +285,15 @@ func (h *AuthHandler) Verify(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(user)
 }
 
+// RefreshToken godoc
+// @Summary      Refresh session token
+// @Description  Takes an existing valid JWT and returns a new token with an extended expiration time.
+// @Tags         auth
+// @Produce      json
+// @Param        Authorization  header    string  true  "Insert your Bearer token" default(Bearer <token>)
+// @Success      200            {object}  map[string]interface{} "Returns new token and expires_at"
+// @Failure      401            {object}  map[string]string "Invalid or missing token"
+// @Router       /api/auth/refresh [post]
 func (h *AuthHandler) RefreshToken(w http.ResponseWriter, r *http.Request) {
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" {
@@ -262,7 +312,7 @@ func (h *AuthHandler) RefreshToken(w http.ResponseWriter, r *http.Request) {
 	h.logger.Debug("RefreshToken: refreshing token")
 
 	// Refresh token
-	newToken, expiresAt, err := auth.RefreshJWT(token)
+	newToken, expiresAt, err := jwt.RefreshJWT(token)
 	if err != nil {
 		h.logger.Error("RefreshToken: failed to refresh token", "error", err)
 		http.Error(w, "Failed to refresh token", http.StatusUnauthorized)
