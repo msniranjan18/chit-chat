@@ -11,10 +11,10 @@ import (
 )
 
 type ChatHandler struct {
-	store store.Store
+	store *store.Store
 }
 
-func NewChatHandler(store store.Store) *ChatHandler {
+func NewChatHandler(store *store.Store) *ChatHandler {
 	return &ChatHandler{store: store}
 }
 
@@ -362,7 +362,11 @@ func (h *ChatHandler) AddChatMember(w http.ResponseWriter, r *http.Request) {
 		role = models.ChatMemberRole(*req.Role)
 	}
 
-	if err := h.store.AddChatMember(chatID, req.UserID, role, req.DisplayName); err != nil {
+	displayName := ""
+	if req.DisplayName != nil {
+		displayName = *req.DisplayName
+	}
+	if err := h.store.AddChatMember(chatID, req.UserID, role, displayName); err != nil {
 		http.Error(w, "Failed to add chat member", http.StatusInternalServerError)
 		return
 	}

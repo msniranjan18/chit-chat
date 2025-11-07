@@ -12,10 +12,10 @@ import (
 )
 
 type UserHandler struct {
-	store store.Store
+	store *store.Store
 }
 
-func NewUserHandler(store store.Store) *UserHandler {
+func NewUserHandler(store *store.Store) *UserHandler {
 	return &UserHandler{store: store}
 }
 
@@ -212,7 +212,11 @@ func (h *UserHandler) AddContact(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Add contact
-	if err := h.store.AddContact(userID, req.UserID, req.DisplayName); err != nil {
+	displayName := ""
+	if req.DisplayName != nil {
+		displayName = *req.DisplayName
+	}
+	if err := h.store.AddContact(userID, req.UserID, displayName); err != nil {
 		http.Error(w, "Failed to add contact", http.StatusInternalServerError)
 		return
 	}
