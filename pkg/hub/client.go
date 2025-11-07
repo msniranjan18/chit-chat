@@ -2,7 +2,6 @@ package hub
 
 import (
 	"encoding/json"
-	"log"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -34,19 +33,35 @@ func (c *Client) ReadPump() {
 		_, message, err := c.Conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				log.Printf("WebSocket read error: %v", err)
+				c.Hub.logger.Warn("WebSocket read error",
+					"error", err,
+					"user_id", c.UserID,
+					"session_id", c.SessionID)
+			} else {
+				c.Hub.logger.Debug("WebSocket connection closed normally",
+					"user_id", c.UserID,
+					"session_id", c.SessionID)
 			}
 			break
 		}
 
 		var wsMsg WsMessage
 		if err := json.Unmarshal(message, &wsMsg); err != nil {
-			log.Printf("Error unmarshaling WebSocket message: %v", err)
+			c.Hub.logger.Error("Error unmarshaling WebSocket message",
+				"error", err,
+				"user_id", c.UserID,
+				"session_id", c.SessionID)
 			continue
 		}
 
 		// Set sender from client context
 		wsMsg.Sender = c.UserID
+
+		c.Hub.logger.Debug("Received WebSocket message",
+			"user_id", c.UserID,
+			"session_id", c.SessionID,
+			"message_type", wsMsg.Type,
+			"room_id", wsMsg.RoomID)
 
 		// Handle message
 		c.Hub.Broadcast <- wsMsg
@@ -66,29 +81,69 @@ func (c *Client) WritePump() {
 			c.Conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if !ok {
 				// Hub closed the channel
+				c.Hub.logger.Debug("Send channel closed, closing connection",
+					"user_id", c.UserID,
+					"session_id", c.SessionID)
 				c.Conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
 
 			w, err := c.Conn.NextWriter(websocket.TextMessage)
 			if err != nil {
+				c.Hub.logger.Warn("Failed to get WebSocket writer",
+					"error", err,
+					"user_id", c.UserID,
+					"session_id", c.SessionID)
 				return
 			}
-			w.Write(message)
+
+			bytesWritten, err := w.Write(message)
+			if err != nil {
+				c.Hub.logger.Warn("Failed to write to WebSocket",
+					"error", err,
+					"user_id", c.UserID,
+					"session_id", c.SessionID)
+				return
+			}
 
 			// Add queued messages to the current WebSocket message
+			queuedMessages := 0
 			n := len(c.Send)
 			for i := 0; i < n; i++ {
-				w.Write(<-c.Send)
+				queuedMessage := <-c.Send
+				bytesWrittenQueue, err := w.Write(queuedMessage)
+				if err != nil {
+					c.Hub.logger.Warn("Failed to write queued message",
+						"error", err,
+						"user_id", c.UserID,
+						"session_id", c.SessionID)
+					return
+				}
+				bytesWritten += bytesWrittenQueue
+				queuedMessages++
 			}
 
 			if err := w.Close(); err != nil {
+				c.Hub.logger.Warn("Failed to close WebSocket writer",
+					"error", err,
+					"user_id", c.UserID,
+					"session_id", c.SessionID)
 				return
 			}
+
+			c.Hub.logger.Debug("Message sent via WebSocket",
+				"user_id", c.UserID,
+				"session_id", c.SessionID,
+				"bytes_written", bytesWritten,
+				"queued_messages", queuedMessages)
 
 		case <-ticker.C:
 			c.Conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if err := c.Conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+				c.Hub.logger.Debug("Failed to send ping, connection may be dead",
+					"error", err,
+					"user_id", c.UserID,
+					"session_id", c.SessionID)
 				return
 			}
 		}
@@ -101,9 +156,19 @@ func (c *Client) JoinChat(chatID string) {
 
 	if c.Hub.ChatRooms[chatID] == nil {
 		c.Hub.ChatRooms[chatID] = make(map[*Client]bool)
+		c.Hub.logger.Debug("Created new chat room",
+			"chat_id", chatID)
 	}
-	c.Hub.ChatRooms[chatID][c] = true
-	c.ActiveChats[chatID] = true
+
+	if !c.Hub.ChatRooms[chatID][c] {
+		c.Hub.ChatRooms[chatID][c] = true
+		c.ActiveChats[chatID] = true
+		c.Hub.logger.Info("Client joined chat",
+			"user_id", c.UserID,
+			"session_id", c.SessionID,
+			"chat_id", chatID,
+			"room_members", len(c.Hub.ChatRooms[chatID]))
+	}
 }
 
 func (c *Client) LeaveChat(chatID string) {
@@ -111,10 +176,21 @@ func (c *Client) LeaveChat(chatID string) {
 	defer c.Hub.mu.Unlock()
 
 	if room, ok := c.Hub.ChatRooms[chatID]; ok {
-		delete(room, c)
-		if len(room) == 0 {
-			delete(c.Hub.ChatRooms, chatID)
+		if room[c] {
+			delete(room, c)
+			delete(c.ActiveChats, chatID)
+
+			if len(room) == 0 {
+				delete(c.Hub.ChatRooms, chatID)
+				c.Hub.logger.Debug("Chat room empty, removed",
+					"chat_id", chatID)
+			}
+
+			c.Hub.logger.Info("Client left chat",
+				"user_id", c.UserID,
+				"session_id", c.SessionID,
+				"chat_id", chatID,
+				"remaining_members", len(room))
 		}
 	}
-	delete(c.ActiveChats, chatID)
 }
