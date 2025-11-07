@@ -338,11 +338,14 @@ class ChitChat {
             if (!response.ok) throw new Error('Failed to load chats');
             
             const data = await response.json();
-            this.renderChatList(data.chats);
+            console.log('Chats data:', data.chats); // Debug log
             
+            // Store chats
             data.chats.forEach(chat => {
                 this.chats.set(chat.id, chat);
             });
+            
+            this.renderChatList(data.chats);
         } catch (error) {
             console.error('Error loading chats:', error);
             this.showError('Failed to load chats');
@@ -625,14 +628,15 @@ class ChitChat {
         const chatTitle = document.getElementById('chat-title');
         const chatStatus = document.getElementById('chat-status');
         
-        // For direct chats, show other user's name
+        // Get participants from multiple possible locations
+        let participants = chat.participants || chat.users || [];
+        
         if (chat.type === 'direct') {
             // Find the other participant
-            const otherUser = chat.participants?.find(p => p.id !== this.user.id) ||
-                            chat.users?.find(p => p.id !== this.user.id);
+            const otherUser = participants.find(p => p.id !== this.user.id);
             
             if (otherUser) {
-                chatTitle.textContent = otherUser.name;
+                chatTitle.textContent = otherUser.name || otherUser.phone || 'Direct Chat';
                 chatStatus.textContent = otherUser.is_online ? 'Online' : 'Offline';
             } else {
                 chatTitle.textContent = 'Direct Chat';
@@ -640,7 +644,7 @@ class ChitChat {
             }
         } else {
             chatTitle.textContent = chat.name || 'Group Chat';
-            chatStatus.textContent = `${chat.participants?.length || 1} members`;
+            chatStatus.textContent = `${participants.length || 1} members`;
         }
         
         // Load messages for this chat
@@ -747,28 +751,84 @@ class ChitChat {
         }
     }
 
-    renderChatList(chats) {
-        const container = document.getElementById('chat-list');
-        container.innerHTML = '';
-        
-        if (chats.length === 0) {
-            container.innerHTML = `
-                <div class="empty-chat-list">
-                    <p>No chats yet</p>
-                    <button class="btn-secondary" id="start-chat-from-empty">Start New Chat</button>
-                </div>
-            `;
-            
-            document.getElementById('start-chat-from-empty').addEventListener('click', () => {
-                this.showNewChatModal();
-            });
-            return;
+    getChatName(chat) {
+        if (chat.type === 'group' || chat.type === 'channel') {
+            return chat.name || 'Unnamed Group';
         }
-        
-        chats.forEach(chat => {
-            const chatElement = this.createChatElement(chat);
-            container.appendChild(chatElement);
+
+        // For direct chats, find the other participant
+        if (chat.members && chat.members.length > 0) {
+            const otherMember = chat.members.find(m => m.user_id !== this.user.id);
+            if (otherMember) {
+                // Priority: DisplayName > User Object Name > Phone
+                return otherMember.display_name || (otherMember.user && otherMember.user.name) || otherMember.user_id;
+            }
+        }
+        return 'Direct Chat-1';
+    }
+
+    renderChatList() {
+        const chatList = document.getElementById('chat-list');
+        chatList.innerHTML = '';
+
+        // Sort: Pinned first, then by last activity
+        const sortedChats = Array.from(this.chats.values()).sort((a, b) => {
+            if (a.is_pinned !== b.is_pinned) return b.is_pinned ? 1 : -1;
+            return new Date(b.last_activity) - new Date(a.last_activity);
         });
+
+        sortedChats.forEach(chat => {
+            const chatName = this.getChatName(chat); // Using the fix here
+            const isActive = this.activeChat && this.activeChat.id === chat.id;
+            
+            const chatEl = document.createElement('div');
+            chatEl.className = `chat-item ${isActive ? 'active' : ''}`;
+            chatEl.innerHTML = `
+                <div class="chat-avatar">${chatName.charAt(0).toUpperCase()}</div>
+                <div class="chat-info">
+                    <div class="chat-name">${chatName}</div>
+                    <div class="chat-last-msg">${chat.last_message ? chat.last_message.content : 'No messages yet'}</div>
+                </div>
+                ${chat.unread_count > 0 ? `<div class="unread-badge">${chat.unread_count}</div>` : ''}
+            `;
+            chatEl.onclick = () => this.switchChat(chat.id);
+            chatList.appendChild(chatEl);
+        });
+    }
+
+    async handleCreateChat() {
+        const chatNameInput = document.getElementById('new-chat-name'); // Ensure this ID exists in your HTML
+        const selectedUserIds = Array.from(document.querySelectorAll('.user-checkbox:checked')).map(cb => cb.value);
+
+        if (selectedUserIds.length === 0) return;
+
+        const isGroup = selectedUserIds.length > 1 || (chatNameInput && chatNameInput.value);
+        
+        const payload = {
+            type: isGroup ? 'group' : 'direct',
+            user_ids: selectedUserIds,
+            name: isGroup ? chatNameInput.value : null
+        };
+
+        try {
+            const response = await fetch('/api/chats', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${this.token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(payload)
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                this.chats.set(data.chat.id, data.chat);
+                this.closeModal('new-chat-modal');
+                this.switchChat(data.chat.id);
+            }
+        } catch (err) {
+            console.error("Failed to create chat", err);
+        }
     }
 
     createChatElement(chat) {
@@ -776,41 +836,59 @@ class ChitChat {
         div.className = 'chat-item';
         div.dataset.chatId = chat.id;
         
-        // FIX: Get the correct chat name for direct chats
-        let chatName = chat.name || 'Direct Chat';
+        // Get chat name with proper fallbacks
+        let chatName = 'Direct Chat';
         let lastMessage = 'No messages yet';
         let timestamp = '';
         let unreadCount = '';
+        let avatarText = 'D';
         
+        // For direct chats, get the other user's name
         if (chat.type === 'direct') {
-            // Try different ways to get the other user's name
-            if (chat.participants && Array.isArray(chat.participants)) {
-                const otherUser = chat.participants.find(p => p.id !== this.user?.id);
+            // Try multiple ways to get participants
+            let participants = chat.participants || chat.users || [];
+            
+            if (Array.isArray(participants) && participants.length > 0) {
+                // Find the other participant (not current user)
+                const otherUser = participants.find(p => p.id !== this.user?.id);
+                
                 if (otherUser) {
-                    chatName = otherUser.name || otherUser.phone || 'Unknown';
-                }
-            } else if (chat.users && Array.isArray(chat.users)) {
-                const otherUser = chat.users.find(p => p.id !== this.user?.id);
-                if (otherUser) {
-                    chatName = otherUser.name || otherUser.phone || 'Unknown';
+                    chatName = otherUser.name || otherUser.phone || 'Unknown User';
+                    avatarText = chatName.charAt(0).toUpperCase();
                 }
             }
+        } else if (chat.type === 'group') {
+            chatName = chat.name || 'Group Chat';
+            avatarText = chatName.charAt(0).toUpperCase();
         }
         
+        // Get last message info
         if (chat.last_message) {
             lastMessage = chat.last_message.content || '📎 Attachment';
-            timestamp = this.formatTime(chat.last_message.sent_at || chat.last_activity);
+            timestamp = this.formatTime(chat.last_message.sent_at);
         } else if (chat.last_activity) {
             timestamp = this.formatTime(chat.last_activity);
+        } else if (chat.created_at) {
+            timestamp = this.formatTime(chat.created_at);
         }
         
+        // Get unread count
         if (chat.unread_count > 0) {
             unreadCount = `<div class="unread-count">${chat.unread_count}</div>`;
         }
         
+        // Filter: Don't show chats with no messages AND no name (empty chats)
+        // Only show if there's at least one message OR it's a named group
+        const shouldShowChat = chat.last_message || chat.name || 
+                            (chat.type === 'direct' && chatName !== 'Direct Chat');
+        
+        if (!shouldShowChat) {
+            return null; // Don't render empty direct chats
+        }
+        
         div.innerHTML = `
             <div class="chat-avatar">
-                <span>${chatName.charAt(0).toUpperCase()}</span>
+                <span>${avatarText}</span>
             </div>
             <div class="chat-info">
                 <div class="chat-name">${chatName}</div>
