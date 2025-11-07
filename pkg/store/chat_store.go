@@ -9,8 +9,12 @@ import (
 )
 
 func (s *Store) CreateChat(chatReq *models.ChatRequest, createdBy string) (*models.Chat, error) {
+	s.logger.Info("Creating chat",
+		"type", chatReq.Type, "name", chatReq.Name, "created_by", createdBy, "user_count", len(chatReq.UserIDs))
+
 	tx, err := s.DB.Begin()
 	if err != nil {
+		s.logger.Error("Failed to begin transaction for CreateChat", "error", err)
 		return nil, err
 	}
 	defer tx.Rollback()
@@ -44,8 +48,11 @@ func (s *Store) CreateChat(chatReq *models.ChatRequest, createdBy string) (*mode
 	).Scan(&chat.ID)
 
 	if err != nil {
+		s.logger.Error("Failed to insert chat", "error", err, "chat_id", chatID)
 		return nil, err
 	}
+
+	s.logger.Debug("Chat created in database", "chat_id", chatID)
 
 	// Add creator as member with owner role
 	_, err = tx.Exec(`
@@ -54,12 +61,17 @@ func (s *Store) CreateChat(chatReq *models.ChatRequest, createdBy string) (*mode
 		chatID, createdBy, now,
 	)
 	if err != nil {
+		s.logger.Error("Failed to add creator as chat member",
+			"error", err, "chat_id", chatID, "user_id", createdBy)
 		return nil, err
 	}
+
+	s.logger.Debug("Added creator as chat member", "chat_id", chatID, "user_id", createdBy)
 
 	// Add other members
 	for _, userID := range chatReq.UserIDs {
 		if userID == createdBy {
+			s.logger.Debug("Skipping creator in member list", "user_id", userID)
 			continue
 		}
 
@@ -69,8 +81,11 @@ func (s *Store) CreateChat(chatReq *models.ChatRequest, createdBy string) (*mode
 			chatID, userID, now,
 		)
 		if err != nil {
+			s.logger.Error("Failed to add chat member",
+				"error", err, "chat_id", chatID, "user_id", userID)
 			return nil, err
 		}
+		s.logger.Debug("Added chat member", "chat_id", chatID, "user_id", userID)
 	}
 
 	// For groups, create group settings
@@ -81,11 +96,15 @@ func (s *Store) CreateChat(chatReq *models.ChatRequest, createdBy string) (*mode
 			chatID,
 		)
 		if err != nil {
+			s.logger.Error("Failed to create group settings",
+				"error", err, "chat_id", chatID)
 			return nil, err
 		}
+		s.logger.Debug("Created group settings", "chat_id", chatID)
 	}
 
 	if err = tx.Commit(); err != nil {
+		s.logger.Error("Failed to commit transaction for CreateChat", "error", err)
 		return nil, err
 	}
 
@@ -95,10 +114,15 @@ func (s *Store) CreateChat(chatReq *models.ChatRequest, createdBy string) (*mode
 		s.InvalidateUserChatsCache(userID)
 	}
 
+	s.logger.Info("Chat created successfully",
+		"chat_id", chatID, "type", chatReq.Type, "total_members", len(chatReq.UserIDs)+1)
+
 	return chat, nil
 }
 
 func (s *Store) GetChat(chatID string) (*models.Chat, error) {
+	s.logger.Debug("Getting chat", "chat_id", chatID)
+
 	query := `
 		SELECT id, type, name, description, avatar_url, created_by, created_at, updated_at, last_activity,
 		       is_archived, is_muted, is_pinned
@@ -113,16 +137,21 @@ func (s *Store) GetChat(chatID string) (*models.Chat, error) {
 	)
 
 	if err == sql.ErrNoRows {
+		s.logger.Debug("Chat not found", "chat_id", chatID)
 		return nil, nil
 	}
 	if err != nil {
+		s.logger.Error("Failed to get chat", "error", err, "chat_id", chatID)
 		return nil, err
 	}
 
+	s.logger.Debug("Chat retrieved", "chat_id", chatID, "type", chat.Type)
 	return chat, nil
 }
 
 func (s *Store) GetDirectChat(user1ID, user2ID string) (*models.Chat, error) {
+	s.logger.Debug("Getting direct chat", "user1_id", user1ID, "user2_id", user2ID)
+
 	query := `
 		SELECT c.id, c.type, c.name, c.description, c.avatar_url, c.created_by, 
 		       c.created_at, c.updated_at, c.last_activity,
@@ -143,18 +172,25 @@ func (s *Store) GetDirectChat(user1ID, user2ID string) (*models.Chat, error) {
 	)
 
 	if err == sql.ErrNoRows {
+		s.logger.Debug("Direct chat not found", "user1_id", user1ID, "user2_id", user2ID)
 		return nil, nil
 	}
 	if err != nil {
+		s.logger.Error("Failed to get direct chat",
+			"error", err, "user1_id", user1ID, "user2_id", user2ID)
 		return nil, err
 	}
 
+	s.logger.Debug("Direct chat found", "chat_id", chat.ID, "user1_id", user1ID, "user2_id", user2ID)
 	return chat, nil
 }
 
 func (s *Store) GetUserChats(userID string) ([]models.Chat, error) {
+	s.logger.Debug("Getting user chats", "user_id", userID)
+
 	// Try cache first
 	if cached, err := s.GetCachedUserChats(userID); err == nil && cached != nil {
+		s.logger.Debug("Retrieved user chats from cache", "user_id", userID, "chat_count", len(cached))
 		return cached, nil
 	}
 
@@ -172,6 +208,7 @@ func (s *Store) GetUserChats(userID string) ([]models.Chat, error) {
 
 	rows, err := s.DB.Query(query, userID)
 	if err != nil {
+		s.logger.Error("Failed to query user chats", "error", err, "user_id", userID)
 		return nil, err
 	}
 	defer rows.Close()
@@ -191,6 +228,7 @@ func (s *Store) GetUserChats(userID string) ([]models.Chat, error) {
 			&lastMessageContent, &lastMessageTime,
 		)
 		if err != nil {
+			s.logger.Error("Failed to scan chat row", "error", err, "user_id", userID)
 			return nil, err
 		}
 
@@ -205,6 +243,8 @@ func (s *Store) GetUserChats(userID string) ([]models.Chat, error) {
 		chats = append(chats, chat)
 	}
 
+	s.logger.Debug("Retrieved user chats from database", "user_id", userID, "chat_count", len(chats))
+
 	// Cache the result
 	go s.CacheUserChats(userID, chats)
 
@@ -212,6 +252,8 @@ func (s *Store) GetUserChats(userID string) ([]models.Chat, error) {
 }
 
 func (s *Store) UpdateChat(chatID string, updates *models.ChatUpdateRequest) error {
+	s.logger.Info("Updating chat", "chat_id", chatID, "updates", updates)
+
 	query := `
 		UPDATE chats 
 		SET name = COALESCE($2, name),
@@ -224,25 +266,51 @@ func (s *Store) UpdateChat(chatID string, updates *models.ChatUpdateRequest) err
 		WHERE id = $1
 		RETURNING id`
 
-	return s.DB.QueryRow(
+	err := s.DB.QueryRow(
 		query, chatID, updates.Name, updates.Description,
 		updates.AvatarURL, updates.IsArchived, updates.IsMuted, updates.IsPinned,
 	).Scan(&chatID)
+
+	if err != nil {
+		s.logger.Error("Failed to update chat", "error", err, "chat_id", chatID)
+		return err
+	}
+
+	s.logger.Info("Chat updated successfully", "chat_id", chatID)
+	return nil
 }
 
 func (s *Store) UpdateChatLastActivity(chatID string) error {
+	s.logger.Debug("Updating chat last activity", "chat_id", chatID)
+
 	query := `UPDATE chats SET last_activity = CURRENT_TIMESTAMP WHERE id = $1`
 	_, err := s.DB.Exec(query, chatID)
-	return err
+	if err != nil {
+		s.logger.Error("Failed to update chat last activity", "error", err, "chat_id", chatID)
+		return err
+	}
+
+	s.logger.Debug("Chat last activity updated", "chat_id", chatID)
+	return nil
 }
 
 func (s *Store) DeleteChat(chatID string) error {
+	s.logger.Warn("Deleting chat", "chat_id", chatID)
+
 	query := `DELETE FROM chats WHERE id = $1`
 	_, err := s.DB.Exec(query, chatID)
-	return err
+	if err != nil {
+		s.logger.Error("Failed to delete chat", "error", err, "chat_id", chatID)
+		return err
+	}
+
+	s.logger.Info("Chat deleted successfully", "chat_id", chatID)
+	return nil
 }
 
 func (s *Store) GetChatMembers(chatID string) ([]models.ChatMember, error) {
+	s.logger.Debug("Getting chat members", "chat_id", chatID)
+
 	query := `
 		SELECT chat_id, user_id, joined_at, last_read_at, role, is_admin, display_name, is_banned, banned_until
 		FROM chat_members 
@@ -251,6 +319,7 @@ func (s *Store) GetChatMembers(chatID string) ([]models.ChatMember, error) {
 
 	rows, err := s.DB.Query(query, chatID)
 	if err != nil {
+		s.logger.Error("Failed to query chat members", "error", err, "chat_id", chatID)
 		return nil, err
 	}
 	defer rows.Close()
@@ -264,15 +333,20 @@ func (s *Store) GetChatMembers(chatID string) ([]models.ChatMember, error) {
 			&member.DisplayName, &member.IsBanned, &member.BannedUntil,
 		)
 		if err != nil {
+			s.logger.Error("Failed to scan chat member row", "error", err, "chat_id", chatID)
 			return nil, err
 		}
 		members = append(members, member)
 	}
 
+	s.logger.Debug("Retrieved chat members", "chat_id", chatID, "member_count", len(members))
 	return members, nil
 }
 
 func (s *Store) AddChatMember(chatID, userID string, role models.ChatMemberRole, displayName string) error {
+	s.logger.Info("Adding chat member",
+		"chat_id", chatID, "user_id", userID, "role", role, "display_name", displayName)
+
 	query := `
 		INSERT INTO chat_members (chat_id, user_id, joined_at, role, display_name)
 		VALUES ($1, $2, CURRENT_TIMESTAMP, $3, $4)
@@ -284,54 +358,92 @@ func (s *Store) AddChatMember(chatID, userID string, role models.ChatMemberRole,
 
 	_, err := s.DB.Exec(query, chatID, userID, role, displayName)
 	if err != nil {
+		s.logger.Error("Failed to add chat member",
+			"error", err, "chat_id", chatID, "user_id", userID)
 		return err
 	}
 
 	// Invalidate user's chat cache
 	s.InvalidateUserChatsCache(userID)
 
+	s.logger.Info("Chat member added successfully",
+		"chat_id", chatID, "user_id", userID, "role", role)
 	return nil
 }
 
 func (s *Store) RemoveChatMember(chatID, userID string) error {
+	s.logger.Info("Removing chat member", "chat_id", chatID, "user_id", userID)
+
 	query := `DELETE FROM chat_members WHERE chat_id = $1 AND user_id = $2`
 	_, err := s.DB.Exec(query, chatID, userID)
 	if err != nil {
+		s.logger.Error("Failed to remove chat member",
+			"error", err, "chat_id", chatID, "user_id", userID)
 		return err
 	}
 
 	// Invalidate user's chat cache
 	s.InvalidateUserChatsCache(userID)
 
+	s.logger.Info("Chat member removed successfully", "chat_id", chatID, "user_id", userID)
 	return nil
 }
 
 func (s *Store) UpdateChatMemberRole(chatID, userID string, role models.ChatMemberRole) error {
+	s.logger.Info("Updating chat member role",
+		"chat_id", chatID, "user_id", userID, "role", role)
+
 	query := `UPDATE chat_members SET role = $3 WHERE chat_id = $1 AND user_id = $2`
 	_, err := s.DB.Exec(query, chatID, userID, role)
-	return err
+	if err != nil {
+		s.logger.Error("Failed to update chat member role",
+			"error", err, "chat_id", chatID, "user_id", userID)
+		return err
+	}
+
+	s.logger.Info("Chat member role updated", "chat_id", chatID, "user_id", userID, "role", role)
+	return nil
 }
 
 func (s *Store) UpdateMemberLastRead(chatID, userID string) error {
+	s.logger.Debug("Updating member last read", "chat_id", chatID, "user_id", userID)
+
 	query := `UPDATE chat_members SET last_read_at = CURRENT_TIMESTAMP WHERE chat_id = $1 AND user_id = $2`
 	_, err := s.DB.Exec(query, chatID, userID)
-	return err
+	if err != nil {
+		s.logger.Error("Failed to update member last read",
+			"error", err, "chat_id", chatID, "user_id", userID)
+		return err
+	}
+
+	s.logger.Debug("Member last read updated", "chat_id", chatID, "user_id", userID)
+	return nil
 }
 
 func (s *Store) IsChatMember(chatID, userID string) (bool, error) {
+	s.logger.Debug("Checking chat membership", "chat_id", chatID, "user_id", userID)
+
 	query := `SELECT 1 FROM chat_members WHERE chat_id = $1 AND user_id = $2 AND is_banned = FALSE`
 	var exists int
 	err := s.DB.QueryRow(query, chatID, userID).Scan(&exists)
 	if err == sql.ErrNoRows {
+		s.logger.Debug("User is not a chat member", "chat_id", chatID, "user_id", userID)
 		return false, nil
 	}
 	if err != nil {
+		s.logger.Error("Failed to check chat membership",
+			"error", err, "chat_id", chatID, "user_id", userID)
 		return false, err
 	}
+
+	s.logger.Debug("User is a chat member", "chat_id", chatID, "user_id", userID)
 	return true, nil
 }
 
 func (s *Store) SearchChats(queryStr string, chatType *models.ChatType, limit int) ([]models.Chat, error) {
+	s.logger.Info("Searching chats",
+		"query", queryStr, "type", chatType, "limit", limit)
+
 	baseQuery := `
 		SELECT id, type, name, description, avatar_url, created_by, created_at, updated_at, last_activity,
 		       is_archived, is_muted, is_pinned
@@ -352,6 +464,8 @@ func (s *Store) SearchChats(queryStr string, chatType *models.ChatType, limit in
 
 	rows, err := s.DB.Query(query, args...)
 	if err != nil {
+		s.logger.Error("Failed to search chats",
+			"error", err, "query", queryStr, "type", chatType)
 		return nil, err
 	}
 	defer rows.Close()
@@ -366,10 +480,13 @@ func (s *Store) SearchChats(queryStr string, chatType *models.ChatType, limit in
 			&chat.IsMuted, &chat.IsPinned,
 		)
 		if err != nil {
+			s.logger.Error("Failed to scan chat row in search", "error", err)
 			return nil, err
 		}
 		chats = append(chats, chat)
 	}
 
+	s.logger.Info("Chat search completed",
+		"query", queryStr, "results", len(chats), "limit", limit)
 	return chats, nil
 }
