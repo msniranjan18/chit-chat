@@ -272,7 +272,7 @@ func (s *Store) GetChatMembers(chatID string) ([]models.ChatMember, error) {
 	return members, nil
 }
 
-func (s *Store) AddChatMember(chatID, userID string, role models.ChatMemberRole, displayName *string) error {
+func (s *Store) AddChatMember(chatID, userID string, role models.ChatMemberRole, displayName string) error {
 	query := `
 		INSERT INTO chat_members (chat_id, user_id, joined_at, role, display_name)
 		VALUES ($1, $2, CURRENT_TIMESTAMP, $3, $4)
