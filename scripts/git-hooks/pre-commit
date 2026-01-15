@@ -1,0 +1,12 @@
+#!/bin/bash
+set -e
+
+echo "Running pre-commit checks..."
+
+make fmt
+make vet
+make test
+make lint
+make security-scan
+
+echo "Pre-commit checks passed! ✓"
