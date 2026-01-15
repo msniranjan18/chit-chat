@@ -142,8 +142,20 @@ docker-run: ## Run Docker container
 	@echo "Running Docker container..."
 	@$(DOCKER) run -p 8080:8080 --name $(PROJECT_NAME) $(DOCKER_IMAGE_NAME):$(DOCKER_TAG)
 
+.PHONY: docker-compose-build
+docker-compose-build: ## Build app service with Docker Compose
+	@echo "Building app service without Docker cache..."
+	@$(DOCKER_COMPOSE) build app
+	@echo "Docker Compose build completed for app."
+
+.PHONY: docker-compose-build-nocache
+docker-compose-build-nocache: ## Build app service with Docker Compose without cache
+	@echo "Building app service without Docker cache..."
+	@$(DOCKER_COMPOSE) build --no-cache app
+	@echo "Docker Compose build (no cache) completed for app."
+
 .PHONY: docker-compose-up
-docker-compose-up: ## Start all services with Docker Compose
+docker-compose-up: docker-compose-build-nocache ## Start all services with Docker Compose
 	@echo "Starting services with Docker Compose..."
 	@$(DOCKER_COMPOSE) up -d
 	@echo "Services started. Visit http://localhost:8080"
@@ -163,7 +175,7 @@ docker-ps:
 	@$(DOCKER_COMPOSE) ps
 
 .PHONY: docker-compose-restart
-docker-compose-restart: docker-compose-down docker-compose-up ## Restart all services
+docker-compose-restart: docker-compose-down docker-compose-build-nocache docker-compose-up ## Restart all services
 
 # ==============================================================================
 # Linting & Formatting
