@@ -7,9 +7,12 @@ import (
 	"github.com/msniranjan18/chit-chat/pkg/handlers"
 	"github.com/msniranjan18/chit-chat/pkg/hub"
 	"github.com/msniranjan18/chit-chat/pkg/store"
+
+	_ "github.com/swaggo/files"
+	httpSwagger "github.com/swaggo/http-swagger"
 )
 
-func NewRouter(h *hub.Hub, s store.Store) *http.ServeMux {
+func NewRouter(h *hub.Hub, s *store.Store) *http.ServeMux {
 	mux := http.NewServeMux()
 
 	// Create handlers
@@ -21,6 +24,9 @@ func NewRouter(h *hub.Hub, s store.Store) *http.ServeMux {
 	// Static files
 	fileServer := http.FileServer(http.Dir("./static"))
 	mux.Handle("/static/", http.StripPrefix("/static/", fileServer))
+
+	// Swagger UI
+	mux.Handle("/swagger/", httpSwagger.WrapHandler)
 
 	// Authentication endpoints (no auth required)
 	mux.HandleFunc("POST /api/auth/register", authHandler.Register)
