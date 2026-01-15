@@ -1,0 +1,41 @@
+chit-chat/
+├── main.go                 # Application entry point
+├── go.mod                  # Go module definition
+├── .env.example           # Environment variables template
+├── Dockerfile             # Docker container definition
+├── docker-compose.yml     # Multi-container orchestration
+├── static/                # Frontend assets
+│   ├── index.html        # Main HTML file
+│   ├── style.css         # CSS styles
+│   └── app.js            # Frontend JavaScript
+├── pkg/                   # Go packages
+│   ├── models/           # Data models
+│   │   ├── user.go       # User models
+│   │   ├── message.go    # Message models
+│   │   ├── chat.go       # Chat models
+│   │   └── group.go      # Group models
+│   ├── auth/             # Authentication
+│   │   ├── jwt.go        # JWT handling
+│   │   ├── middleware.go # Auth middleware
+│   │   └── session.go    # Session management
+│   ├── hub/              # WebSocket hub
+│   │   ├── hub.go        # Main hub
+│   │   ├── client.go     # Client handling
+│   │   ├── redis_sync.go # Redis synchronization
+│   │   └── message_handler.go # Message processing
+│   ├── store/            # Data storage
+│   │   ├── db.go         # Database setup
+│   │   ├── redis.go      # Redis setup
+│   │   ├── user_store.go # User storage
+│   │   ├── chat_store.go # Chat storage
+│   │   └── message_store.go # Message storage
+│   ├── handlers/         # HTTP handlers
+│   │   ├── ws_handlers.go # WebSocket handlers
+│   │   ├── auth_handlers.go # Auth handlers
+│   │   ├── chat_handlers.go # Chat handlers
+│   │   ├── user_handlers.go # User handlers
+│   │   └── message_handlers.go # Message handlers
+│   └── routes/           # HTTP routing
+│       └── routes.go     # Route definitions
+└── config/               # Configuration
+    └── config.go         # Config management
