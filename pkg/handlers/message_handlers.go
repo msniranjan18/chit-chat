@@ -11,10 +11,10 @@ import (
 )
 
 type MessageHandler struct {
-	store store.Store
+	store *store.Store
 }
 
-func NewMessageHandler(store store.Store) *MessageHandler {
+func NewMessageHandler(store *store.Store) *MessageHandler {
 	return &MessageHandler{store: store}
 }
 
