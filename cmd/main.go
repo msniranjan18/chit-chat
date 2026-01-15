@@ -4,9 +4,10 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"os"
 	"time"
 
-	"github.com/msniranjan18/chit-chat/config" // Add this
+	"github.com/msniranjan18/chit-chat/config"
 	"github.com/msniranjan18/chit-chat/pkg/auth"
 	"github.com/msniranjan18/chit-chat/pkg/hub"
 	"github.com/msniranjan18/chit-chat/pkg/routes"
@@ -16,6 +17,10 @@ import (
 )
 
 func main() {
+	// Set log output to stdout/stderr for Docker
+	log.SetOutput(os.Stdout)
+	log.SetFlags(log.LstdFlags | log.Lshortfile | log.Lmicroseconds)
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
