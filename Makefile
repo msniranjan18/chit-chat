@@ -286,6 +286,23 @@ trace:
 		golang:1.22 \
 		go tool trace -http=:8081 trace.out
 
+.PHONY: jwt-secret
+jwt-secret: ## Generate a secure JWT secret and copy to clipboard
+	@echo "Generating JWT secret..."
+	@SECRET=$$(openssl rand -base64 32); \
+	if command -v pbcopy >/dev/null 2>&1; then \
+		echo "$$SECRET" | pbcopy; \
+		echo "Generated JWT_SECRET is copied to clipboard using pbcopy"; \
+	elif command -v xclip >/dev/null 2>&1; then \
+		echo "$$SECRET" | xclip -selection clipboard; \
+		echo "Generated JWT_SECRET is copied to clipboard using xclip"; \
+	else \
+		echo "Clipboard tool not found. Please copy manually."; \
+	fi; \
+	echo ""; \
+	echo "Add this to your .env file by using paste command"; \
+	echo "JWT_SECRET=$$SECRET"
+	
 # ==============================================================================
 # Default target
 # ==============================================================================
