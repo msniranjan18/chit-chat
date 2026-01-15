@@ -181,7 +181,28 @@ func (h *Hub) handleChatMessage(msg WsMessage) {
 		return
 	}
 
-	// Prepare response
+	// Track which members are online vs offline
+	var onlineMembers []string
+	var offlineMembers []string
+
+	h.mu.RLock()
+	// Check which members are currently online
+	for _, member := range members {
+		if member.UserID == msg.Sender {
+			// Skip sender for delivery status (they already have it)
+			continue
+		}
+		
+		// Check if member has active WebSocket connections
+		if userClients, ok := h.Clients[member.UserID]; ok && len(userClients) > 0 {
+			onlineMembers = append(onlineMembers, member.UserID)
+		} else {
+			offlineMembers = append(offlineMembers, member.UserID)
+		}
+	}
+	h.mu.RUnlock()
+
+	// Prepare response for online members
 	response := WsMessage{
 		Type:   string(MessageTypeMessage),
 		RoomID: messageReq.ChatID,
@@ -192,25 +213,35 @@ func (h *Hub) handleChatMessage(msg WsMessage) {
 		}),
 	}
 
-	// Broadcast to all clients in the chat room
+	// Broadcast to all online clients in the chat room
 	h.mu.RLock()
 	if room, ok := h.ChatRooms[messageReq.ChatID]; ok {
 		for client := range room {
-			// Mark as delivered if recipient is online
-			if client.UserID != msg.Sender {
-				go h.Storage.UpdateMessageStatus(savedMsg.ID, client.UserID, "delivered")
+			// Skip sender (they already sent the message)
+			if client.UserID == msg.Sender {
+				continue
 			}
+
+			// Mark as delivered for online recipients
+			go h.Storage.UpdateMessageStatus(savedMsg.ID, client.UserID, "delivered")
 
 			// Send message to client
 			select {
 			case client.Send <- marshalMessage(response):
+				// Message sent successfully
 			default:
+				// Client buffer full, disconnect
 				close(client.Send)
 				delete(room, client)
 			}
 		}
 	}
 	h.mu.RUnlock()
+
+	// Update message status for offline members (they'll see it when they come online)
+	for _, offlineMemberID := range offlineMembers {
+		go h.Storage.UpdateMessageStatus(savedMsg.ID, offlineMemberID, "sent")
+	}
 
 	// Publish to Redis for other instances
 	go func() {
@@ -220,6 +251,10 @@ func (h *Hub) handleChatMessage(msg WsMessage) {
 
 	// Update chat last activity
 	go h.Storage.UpdateChatLastActivity(messageReq.ChatID)
+
+	// Log delivery status
+	log.Printf("Message delivered: chat=%s, sender=%s, online=%d, offline=%d", 
+		messageReq.ChatID, msg.Sender, len(onlineMembers), len(offlineMembers))
 }
 
 func (h *Hub) handleTypingIndicator(msg WsMessage) {
