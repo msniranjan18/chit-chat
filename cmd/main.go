@@ -4,50 +4,30 @@ import (
 	"context"
 	"log"
 	"net/http"
-	"os"
 	"time"
 
+	"github.com/msniranjan18/chit-chat/config" // Add this
 	"github.com/msniranjan18/chit-chat/pkg/auth"
 	"github.com/msniranjan18/chit-chat/pkg/hub"
 	"github.com/msniranjan18/chit-chat/pkg/routes"
 	"github.com/msniranjan18/chit-chat/pkg/store"
 
-	_ "github.com/msniranjan18/chit-chat/docs" // swagger api-docs
+	_ "github.com/msniranjan18/chit-chat/docs"
 )
 
 func main() {
-	time.Sleep(10 * time.Second)
-	// Initialize context
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-	// Load configuration from environment variables
-	pgConn := os.Getenv("DATABASE_URL")
-	log.Println("DATABASE_URL", pgConn)
-	if pgConn == "" {
-		pgConn = "postgres://postgres:password@localhost:5432/chitchat?sslmode=disable"
-	}
+	// Load configuration
+	cfg := config.Load() // Use config
 
-	redisAddr := os.Getenv("REDIS_URL")
-	log.Println("REDIS_URL", redisAddr)
-	if redisAddr == "" {
-		redisAddr = "redis://localhost:6379"
-	}
-
-	jwtSecret := os.Getenv("JWT_SECRET")
-	log.Println("JWT_SECRET:", jwtSecret)
-	if jwtSecret == "" {
-		jwtSecret = "your-secret-key-change-in-production-for-chitchat-app"
-	}
-
-	port := os.Getenv("PORT")
-	log.Println("PORT:", port)
-	if port == "" {
-		port = "8080"
-	}
+	log.Printf("Starting ChitChat server on port %s\n", cfg.Server.Port)
+	log.Printf("Environment: %s\n", cfg.Server.Env)
 
 	// 1. Initialize Storage
 	log.Println("Initializing storage...")
-	storage, err := store.NewStore(ctx, pgConn, redisAddr)
+	storage, err := store.NewStore(ctx, cfg.Database.URL, cfg.Redis.URL)
 	if err != nil {
 		log.Fatalf("Failed to connect to storage: %v", err)
 	}
@@ -59,13 +39,12 @@ func main() {
 		log.Fatalf("Failed to initialize schema: %v", err)
 	}
 
-	// Start cleanup worker for old sessions/messages
-	go storage.StartCleanupWorker(1*time.Hour, 24*time.Hour*30) // Clean 30-day old data
+	// Start cleanup worker
+	go storage.StartCleanupWorker(1*time.Hour, 24*time.Hour*30)
 
 	// 2. Initialize JWT authentication
 	log.Println("Initializing authentication...")
-	//auth.InitJWT([]byte(jwtSecret))
-	auth.InitJWT(jwtSecret)
+	auth.InitJWT(cfg.JWT.Secret)
 
 	// 3. Initialize WebSocket Hub
 	log.Println("Initializing WebSocket hub...")
@@ -79,14 +58,14 @@ func main() {
 
 	// 5. Start HTTP server
 	server := &http.Server{
-		Addr:         ":" + port,
+		Addr:         ":" + cfg.Server.Port,
 		Handler:      router,
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
-		IdleTimeout:  60 * time.Second,
+		ReadTimeout:  cfg.Server.ReadTimeout,
+		WriteTimeout: cfg.Server.WriteTimeout,
+		IdleTimeout:  cfg.Server.IdleTimeout,
 	}
 
-	log.Printf("ChitChat server starting on http://localhost:%s", port)
+	log.Printf("ChitChat server starting on http://localhost:%s", cfg.Server.Port)
 	log.Println("Server is ready to accept connections")
 
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
