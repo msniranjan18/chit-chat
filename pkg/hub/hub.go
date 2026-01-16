@@ -2,7 +2,7 @@ package hub
 
 import (
 	"encoding/json"
-	"log"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -19,6 +19,7 @@ const (
 
 type Hub struct {
 	Storage *store.Store
+	logger  *slog.Logger
 
 	// Registered clients by userID (multiple devices per user)
 	Clients map[string]map[*Client]bool
@@ -54,9 +55,10 @@ const (
 	MessageTypeError      MessageType = "error"
 )
 
-func NewHub(s *store.Store) *Hub {
+func NewHub(s *store.Store, logger *slog.Logger) *Hub {
 	return &Hub{
 		Storage:    s,
+		logger:     logger,
 		Clients:    make(map[string]map[*Client]bool),
 		ChatRooms:  make(map[string]map[*Client]bool),
 		Broadcast:  make(chan WsMessage),
@@ -66,7 +68,7 @@ func NewHub(s *store.Store) *Hub {
 }
 
 func (h *Hub) Run() {
-	log.Println("WebSocket hub started")
+	h.logger.Info("WebSocket hub started")
 	for {
 		select {
 		case client := <-h.Register:
@@ -101,6 +103,14 @@ func (h *Hub) handleRegister(client *Client) {
 			h.ChatRooms[chat.ID][client] = true
 			client.ActiveChats[chat.ID] = true
 		}
+		h.logger.Debug("Client joined chats",
+			"user_id", client.UserID,
+			"session_id", client.SessionID,
+			"chat_count", len(chats))
+	} else {
+		h.logger.Warn("Failed to get user chats",
+			"user_id", client.UserID,
+			"error", err)
 	}
 
 	// Update user status
@@ -108,7 +118,11 @@ func (h *Hub) handleRegister(client *Client) {
 
 	// Notify contacts that user is online
 	go h.notifyPresence(client.UserID, "online")
-	log.Printf("Client registered: user=%s, session=%s", client.UserID, client.SessionID)
+
+	h.logger.Info("Client registered",
+		"user_id", client.UserID,
+		"session_id", client.SessionID,
+		"client_count", len(h.Clients[client.UserID]))
 }
 
 func (h *Hub) handleUnregister(client *Client) {
@@ -122,13 +136,21 @@ func (h *Hub) handleUnregister(client *Client) {
 			delete(h.Clients, client.UserID)
 			// User went offline
 			go h.notifyPresence(client.UserID, "offline")
+			h.logger.Debug("All clients disconnected, user offline",
+				"user_id", client.UserID)
+		} else {
+			h.logger.Debug("Client removed, user still has active sessions",
+				"user_id", client.UserID,
+				"remaining_sessions", len(userClients))
 		}
 	}
 
 	// Remove from all chat rooms
+	leftChats := 0
 	for chatID := range client.ActiveChats {
 		if room, ok := h.ChatRooms[chatID]; ok {
 			delete(room, client)
+			leftChats++
 			if len(room) == 0 {
 				delete(h.ChatRooms, chatID)
 			}
@@ -136,7 +158,11 @@ func (h *Hub) handleUnregister(client *Client) {
 	}
 
 	close(client.Send)
-	log.Printf("Client unregistered: user=%s, session=%s", client.UserID, client.SessionID)
+
+	h.logger.Info("Client unregistered",
+		"user_id", client.UserID,
+		"session_id", client.SessionID,
+		"left_chats", leftChats)
 }
 
 func (h *Hub) handleBroadcast(message WsMessage) {
@@ -148,16 +174,25 @@ func (h *Hub) handleBroadcast(message WsMessage) {
 	case MessageTypeStatus:
 		h.handleStatusUpdate(message)
 	default:
-		log.Printf("Unknown message type: %s", message.Type)
+		h.logger.Warn("Unknown message type received",
+			"type", message.Type,
+			"sender", message.Sender)
 	}
 }
 
 func (h *Hub) handleChatMessage(msg WsMessage) {
 	var messageReq models.MessageRequest
 	if err := json.Unmarshal(msg.Payload, &messageReq); err != nil {
-		log.Printf("Error unmarshaling message: %v", err)
+		h.logger.Error("Error unmarshaling message",
+			"error", err,
+			"sender", msg.Sender)
 		return
 	}
+
+	h.logger.Debug("Processing chat message",
+		"sender", msg.Sender,
+		"chat_id", messageReq.ChatID,
+		"content_type", messageReq.ContentType)
 
 	// Save message to database
 	savedMsg, err := h.Storage.SaveMessage(
@@ -170,14 +205,19 @@ func (h *Hub) handleChatMessage(msg WsMessage) {
 		messageReq.Forwarded,
 	)
 	if err != nil {
-		log.Printf("Error saving message: %v", err)
+		h.logger.Error("Error saving message to database",
+			"error", err,
+			"sender", msg.Sender,
+			"chat_id", messageReq.ChatID)
 		return
 	}
 
 	// Get chat members
 	members, err := h.Storage.GetChatMembers(messageReq.ChatID)
 	if err != nil {
-		log.Printf("Error getting chat members: %v", err)
+		h.logger.Error("Error getting chat members",
+			"error", err,
+			"chat_id", messageReq.ChatID)
 		return
 	}
 
@@ -192,7 +232,7 @@ func (h *Hub) handleChatMessage(msg WsMessage) {
 			// Skip sender for delivery status (they already have it)
 			continue
 		}
-		
+
 		// Check if member has active WebSocket connections
 		if userClients, ok := h.Clients[member.UserID]; ok && len(userClients) > 0 {
 			onlineMembers = append(onlineMembers, member.UserID)
@@ -214,6 +254,7 @@ func (h *Hub) handleChatMessage(msg WsMessage) {
 	}
 
 	// Broadcast to all online clients in the chat room
+	deliveredCount := 0
 	h.mu.RLock()
 	if room, ok := h.ChatRooms[messageReq.ChatID]; ok {
 		for client := range room {
@@ -224,6 +265,7 @@ func (h *Hub) handleChatMessage(msg WsMessage) {
 
 			// Mark as delivered for online recipients
 			go h.Storage.UpdateMessageStatus(savedMsg.ID, client.UserID, "delivered")
+			deliveredCount++
 
 			// Send message to client
 			select {
@@ -233,6 +275,9 @@ func (h *Hub) handleChatMessage(msg WsMessage) {
 				// Client buffer full, disconnect
 				close(client.Send)
 				delete(room, client)
+				h.logger.Warn("Client buffer full, disconnected",
+					"user_id", client.UserID,
+					"chat_id", messageReq.ChatID)
 			}
 		}
 	}
@@ -247,24 +292,39 @@ func (h *Hub) handleChatMessage(msg WsMessage) {
 	go func() {
 		payload, _ := json.Marshal(msg)
 		h.Storage.RDB.Publish(h.Storage.Ctx, "chat_sync", payload)
+		h.logger.Debug("Message published to Redis",
+			"chat_id", messageReq.ChatID,
+			"sender", msg.Sender)
 	}()
 
 	// Update chat last activity
 	go h.Storage.UpdateChatLastActivity(messageReq.ChatID)
 
-	// Log delivery status
-	log.Printf("Message delivered: chat=%s, sender=%s, online=%d, offline=%d", 
-		messageReq.ChatID, msg.Sender, len(onlineMembers), len(offlineMembers))
+	h.logger.Info("Message delivered",
+		"chat_id", messageReq.ChatID,
+		"sender", msg.Sender,
+		"message_id", savedMsg.ID,
+		"online", len(onlineMembers),
+		"offline", len(offlineMembers),
+		"delivered", deliveredCount)
 }
 
 func (h *Hub) handleTypingIndicator(msg WsMessage) {
 	var typing models.TypingIndicator
 	if err := json.Unmarshal(msg.Payload, &typing); err != nil {
-		log.Printf("Error unmarshaling typing indicator: %v", err)
+		h.logger.Error("Error unmarshaling typing indicator",
+			"error", err,
+			"sender", msg.Sender)
 		return
 	}
 
+	h.logger.Debug("Processing typing indicator",
+		"sender", msg.Sender,
+		"chat_id", typing.ChatID,
+		"is_typing", typing.IsTyping)
+
 	// Broadcast typing indicator to all in chat except sender
+	notifiedCount := 0
 	h.mu.RLock()
 	if room, ok := h.ChatRooms[typing.ChatID]; ok {
 		response := WsMessage{
@@ -274,42 +334,65 @@ func (h *Hub) handleTypingIndicator(msg WsMessage) {
 			Payload: msg.Payload,
 		}
 
+		payload := marshalMessage(response)
 		for client := range room {
 			if client.UserID != msg.Sender {
 				select {
-				case client.Send <- marshalMessage(response):
+				case client.Send <- payload:
+					notifiedCount++
 				default:
 					close(client.Send)
 					delete(room, client)
+					h.logger.Warn("Client buffer full during typing indicator",
+						"user_id", client.UserID,
+						"chat_id", typing.ChatID)
 				}
 			}
 		}
 	}
 	h.mu.RUnlock()
+
+	h.logger.Debug("Typing indicator broadcasted",
+		"sender", msg.Sender,
+		"chat_id", typing.ChatID,
+		"notified_users", notifiedCount)
 }
 
 func (h *Hub) handleStatusUpdate(msg WsMessage) {
 	var statusUpdate models.MessageStatusUpdate
 	if err := json.Unmarshal(msg.Payload, &statusUpdate); err != nil {
-		log.Printf("Error unmarshaling status update: %v", err)
+		h.logger.Error("Error unmarshaling status update",
+			"error", err,
+			"sender", msg.Sender)
 		return
 	}
+
+	h.logger.Debug("Processing message status update",
+		"sender", msg.Sender,
+		"message_id", statusUpdate.MessageID,
+		"status", statusUpdate.Status)
 
 	// Update in database
 	err := h.Storage.UpdateMessageStatus(statusUpdate.MessageID, msg.Sender, statusUpdate.Status)
 	if err != nil {
-		log.Printf("Error updating message status: %v", err)
+		h.logger.Error("Error updating message status in database",
+			"error", err,
+			"message_id", statusUpdate.MessageID,
+			"sender", msg.Sender)
 		return
 	}
 
 	// Get message to find original sender
 	message, err := h.Storage.GetMessage(statusUpdate.MessageID)
 	if err != nil {
-		log.Printf("Error getting message: %v", err)
+		h.logger.Error("Error getting message for status update",
+			"error", err,
+			"message_id", statusUpdate.MessageID)
 		return
 	}
 
 	// Notify sender that their message was read/delivered
+	notified := false
 	h.mu.RLock()
 	if room, ok := h.ChatRooms[message.ChatID]; ok {
 		response := WsMessage{
@@ -323,30 +406,49 @@ func (h *Hub) handleStatusUpdate(msg WsMessage) {
 			}),
 		}
 
+		payload := marshalMessage(response)
 		for client := range room {
 			// Find the original sender
 			if client.UserID == message.SenderID {
 				select {
-				case client.Send <- marshalMessage(response):
+				case client.Send <- payload:
+					notified = true
 				default:
 					close(client.Send)
 					delete(room, client)
+					h.logger.Warn("Client buffer full during status update",
+						"user_id", client.UserID,
+						"message_id", statusUpdate.MessageID)
 				}
 				break
 			}
 		}
 	}
 	h.mu.RUnlock()
+
+	h.logger.Info("Message status updated",
+		"message_id", statusUpdate.MessageID,
+		"status", statusUpdate.Status,
+		"original_sender", message.SenderID,
+		"notified", notified,
+		"chat_id", message.ChatID)
 }
 
 func (h *Hub) notifyPresence(userID, status string) {
+	h.logger.Debug("Notifying presence",
+		"user_id", userID,
+		"status", status)
+
 	// Get user's chats
 	chats, err := h.Storage.GetUserChats(userID)
 	if err != nil {
-		log.Printf("Error getting user chats: %v", err)
+		h.logger.Error("Error getting user chats for presence notification",
+			"error", err,
+			"user_id", userID)
 		return
 	}
 
+	notifiedTotal := 0
 	for _, chat := range chats {
 		h.mu.RLock()
 		if room, ok := h.ChatRooms[chat.ID]; ok {
@@ -362,19 +464,36 @@ func (h *Hub) notifyPresence(userID, status string) {
 			}
 
 			payload := marshalMessage(presenceMsg)
+			notifiedInChat := 0
 			for client := range room {
 				if client.UserID != userID {
 					select {
 					case client.Send <- payload:
+						notifiedInChat++
+						notifiedTotal++
 					default:
 						close(client.Send)
 						delete(room, client)
+						h.logger.Warn("Client buffer full during presence notification",
+							"user_id", client.UserID,
+							"chat_id", chat.ID)
 					}
 				}
 			}
+			h.logger.Debug("Presence notified in chat",
+				"user_id", userID,
+				"chat_id", chat.ID,
+				"status", status,
+				"notified_users", notifiedInChat)
 		}
 		h.mu.RUnlock()
 	}
+
+	h.logger.Info("Presence notification completed",
+		"user_id", userID,
+		"status", status,
+		"total_notified", notifiedTotal,
+		"total_chats", len(chats))
 }
 
 // Helper functions
