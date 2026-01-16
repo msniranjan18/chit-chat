@@ -18,12 +18,25 @@ type Store struct {
 }
 
 func NewStore(ctx context.Context, pgConnStr, redisAddr string) (*Store, error) {
-	// Connect to PostgreSQL
-	db, err := sql.Open("postgres", pgConnStr)
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect to PostgreSQL: %w", err)
-	}
+	var db *sql.DB
+	var err error
 
+	// 1. Setup PostgreSQL
+	// Retry Postgres connection 5 times
+	for i := 0; i < 5; i++ {
+		db, err = sql.Open("postgres", pgConnStr)
+		if err == nil {
+			err = db.Ping()
+			if err == nil {
+				break
+			}
+		}
+		log.Printf("Waiting for Postgres... (attempt %d/5)", i+1)
+		time.Sleep(2 * time.Second)
+	}
+	if err != nil {
+		return nil, err
+	}
 	// Test PostgreSQL connection
 	if err := db.Ping(); err != nil {
 		return nil, fmt.Errorf("failed to ping PostgreSQL: %w", err)
@@ -36,6 +49,10 @@ func NewStore(ctx context.Context, pgConnStr, redisAddr string) (*Store, error) 
 
 	// Connect to Redis
 	rdb := InitRedis(redisAddr)
+	// Verify Redis connection
+	if err := rdb.Ping(ctx).Err(); err != nil {
+		return nil, err
+	}
 
 	log.Println("Successfully connected to PostgreSQL and Redis")
 
