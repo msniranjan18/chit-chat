@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/go-redis/redis/v8"
@@ -12,14 +12,17 @@ import (
 )
 
 type Store struct {
-	DB  *sql.DB
-	RDB *redis.Client
-	Ctx context.Context
+	DB     *sql.DB
+	RDB    *redis.Client
+	Ctx    context.Context
+	logger *slog.Logger
 }
 
-func NewStore(ctx context.Context, pgConnStr, redisAddr string) (*Store, error) {
+func NewStore(ctx context.Context, pgConnStr, redisAddr string, logger *slog.Logger) (*Store, error) {
 	var db *sql.DB
 	var err error
+
+	logger.Info("Initializing store", "postgres_conn", pgConnStr[:min(len(pgConnStr), 50)], "redis_addr", redisAddr)
 
 	// 1. Setup PostgreSQL
 	// Retry Postgres connection 5 times
@@ -28,17 +31,21 @@ func NewStore(ctx context.Context, pgConnStr, redisAddr string) (*Store, error) 
 		if err == nil {
 			err = db.Ping()
 			if err == nil {
+				logger.Info("PostgreSQL connection successful", "attempt", i+1)
 				break
 			}
 		}
-		log.Printf("Waiting for Postgres... (attempt %d/5)", i+1)
+		logger.Warn("Waiting for PostgreSQL...", "attempt", i+1, "max_attempts", 5, "error", err)
 		time.Sleep(2 * time.Second)
 	}
 	if err != nil {
+		logger.Error("Failed to connect to PostgreSQL", "error", err)
 		return nil, err
 	}
+
 	// Test PostgreSQL connection
 	if err := db.Ping(); err != nil {
+		logger.Error("Failed to ping PostgreSQL", "error", err)
 		return nil, fmt.Errorf("failed to ping PostgreSQL: %w", err)
 	}
 
@@ -47,23 +54,31 @@ func NewStore(ctx context.Context, pgConnStr, redisAddr string) (*Store, error) 
 	db.SetMaxIdleConns(5)
 	db.SetConnMaxLifetime(5 * time.Minute)
 
+	logger.Debug("PostgreSQL connection pool configured",
+		"max_open_conns", 25, "max_idle_conns", 5, "conn_max_lifetime", "5m")
+
 	// Connect to Redis
-	rdb := InitRedis(redisAddr)
+	rdb := InitRedis(redisAddr, logger)
+
 	// Verify Redis connection
 	if err := rdb.Ping(ctx).Err(); err != nil {
+		logger.Error("Failed to ping Redis", "error", err)
 		return nil, err
 	}
 
-	log.Println("Successfully connected to PostgreSQL and Redis")
+	logger.Info("Successfully connected to PostgreSQL and Redis")
 
 	return &Store{
-		DB:  db,
-		RDB: rdb,
-		Ctx: ctx,
+		DB:     db,
+		RDB:    rdb,
+		Ctx:    ctx,
+		logger: logger,
 	}, nil
 }
 
 func (s *Store) InitSchema() error {
+	s.logger.Info("Initializing database schema")
+
 	schema := `
 		-- Enable UUID extension
 		CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
@@ -252,61 +267,91 @@ func (s *Store) InitSchema() error {
 	`
 
 	_, err := s.DB.Exec(schema)
-	return err
+	if err != nil {
+		s.logger.Error("Failed to initialize schema", "error", err)
+		return err
+	}
+
+	s.logger.Info("Database schema initialized successfully")
+	return nil
 }
 
 func (s *Store) Close() error {
+	s.logger.Info("Closing store connections")
+
 	var errs []error
 
 	if err := s.DB.Close(); err != nil {
+		s.logger.Error("Failed to close PostgreSQL connection", "error", err)
 		errs = append(errs, fmt.Errorf("postgres close error: %w", err))
 	}
 
 	if err := s.RDB.Close(); err != nil {
+		s.logger.Error("Failed to close Redis connection", "error", err)
 		errs = append(errs, fmt.Errorf("redis close error: %w", err))
 	}
 
 	if len(errs) > 0 {
+		s.logger.Error("Errors closing store", "error_count", len(errs))
 		return fmt.Errorf("errors closing store: %v", errs)
 	}
+
+	s.logger.Info("Store connections closed successfully")
 	return nil
 }
 
 func (s *Store) StartCleanupWorker(interval time.Duration, maxAge time.Duration) {
+	s.logger.Info("Starting cleanup worker", "interval", interval, "max_age", maxAge)
+
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
-	log.Printf("Starting cleanup worker: interval=%v, maxAge=%v", interval, maxAge)
-
 	for range ticker.C {
+		s.logger.Debug("Running cleanup cycle")
+
 		// Delete expired sessions
-		_, err := s.DB.Exec(`
+		result, err := s.DB.Exec(`
 			DELETE FROM user_sessions 
 			WHERE last_active < NOW() - $1::interval
 		`, maxAge.String())
 		if err != nil {
-			log.Printf("Error cleaning up sessions: %v", err)
+			s.logger.Error("Error cleaning up sessions", "error", err)
+		} else {
+			rows, _ := result.RowsAffected()
+			if rows > 0 {
+				s.logger.Debug("Cleaned up expired sessions", "deleted_rows", rows)
+			}
 		}
 
 		// Delete expired group invites
-		_, err = s.DB.Exec(`
+		result, err = s.DB.Exec(`
 			UPDATE group_invites 
 			SET is_active = FALSE 
 			WHERE expires_at < NOW()
 		`)
 		if err != nil {
-			log.Printf("Error cleaning up group invites: %v", err)
+			s.logger.Error("Error cleaning up group invites", "error", err)
+		} else {
+			rows, _ := result.RowsAffected()
+			if rows > 0 {
+				s.logger.Debug("Deactivated expired group invites", "updated_rows", rows)
+			}
 		}
 
 		// Archive inactive chats (no activity for 30 days)
-		_, err = s.DB.Exec(`
+		result, err = s.DB.Exec(`
 			UPDATE chats 
 			SET is_archived = TRUE 
 			WHERE last_activity < NOW() - $1::interval 
 			AND is_archived = FALSE
 		`, (30 * 24 * time.Hour).String())
 		if err != nil {
-			log.Printf("Error archiving inactive chats: %v", err)
+			s.logger.Error("Error archiving inactive chats", "error", err)
+		} else {
+			rows, _ := result.RowsAffected()
+			if rows > 0 {
+				s.logger.Debug("Archived inactive chats", "archived_chats", rows)
+			}
 		}
 	}
 }
