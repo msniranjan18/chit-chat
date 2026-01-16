@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"log/slog"
 	"net/http"
 
 	"github.com/msniranjan18/chit-chat/pkg/auth"
@@ -12,29 +13,42 @@ import (
 	httpSwagger "github.com/swaggo/http-swagger"
 )
 
-func NewRouter(h *hub.Hub, s *store.Store) *http.ServeMux {
+// RouterHandler wraps the router with the logger for dependency injection
+type RouterHandler struct {
+	router *http.ServeMux
+	logger *slog.Logger
+}
+
+// NewRouter creates a new HTTP router with all routes configured
+func NewRouter(h *hub.Hub, s *store.Store, logger *slog.Logger) *http.ServeMux {
 	mux := http.NewServeMux()
 
-	// Create handlers
-	authHandler := handlers.NewAuthHandler(s)
-	userHandler := handlers.NewUserHandler(s)
-	chatHandler := handlers.NewChatHandler(s)
-	messageHandler := handlers.NewMessageHandler(s)
+	// Create handlers with logger
+	authHandler := handlers.NewAuthHandler(s, logger)
+	userHandler := handlers.NewUserHandler(s, logger)
+	chatHandler := handlers.NewChatHandler(s, logger)
+	messageHandler := handlers.NewMessageHandler(s, logger)
+	wsHandler := handlers.NewWSHandler(h, logger)
 
 	// Static files
 	fileServer := http.FileServer(http.Dir("./static"))
 	mux.Handle("/static/", http.StripPrefix("/static/", fileServer))
+	logger.Debug("Static file server configured", "path", "/static/")
 
 	// Swagger UI
 	mux.Handle("/swagger/", httpSwagger.WrapHandler)
+	logger.Debug("Swagger UI configured", "path", "/swagger/")
+
+	// WebSocket endpoint
+	mux.HandleFunc("/ws", wsHandler.HandleWS)
+	logger.Debug("WebSocket endpoint configured", "path", "/ws")
 
 	// Authentication endpoints (no auth required)
 	mux.HandleFunc("POST /api/auth/register", authHandler.Register)
 	mux.HandleFunc("POST /api/auth/login", authHandler.Login)
 	mux.HandleFunc("POST /api/auth/refresh", authHandler.RefreshToken)
-
-	// WebSocket endpoint
-	mux.HandleFunc("/ws", handlers.HandleWS(h))
+	logger.Debug("Public authentication endpoints configured",
+		"endpoints", []string{"/api/auth/register", "/api/auth/login", "/api/auth/refresh"})
 
 	// API endpoints with authentication middleware
 	apiRouter := http.NewServeMux()
@@ -80,19 +94,46 @@ func NewRouter(h *hub.Hub, s *store.Store) *http.ServeMux {
 	apiRouter.HandleFunc("DELETE /api/messages/{id}", messageHandler.DeleteMessage)
 	apiRouter.HandleFunc("POST /api/messages/status", messageHandler.UpdateMessageStatus)
 
-	// Apply authentication middleware to API routes
-	mux.Handle("/api/", auth.AuthMiddleware(apiRouter))
+	// Apply authentication middleware to API routes with logging
+	authenticatedAPI := auth.AuthMiddleware(apiRouter)
+
+	// Wrap the authenticated API with route logging
+	mux.Handle("/api/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		logger.Debug("API request received",
+			"method", r.Method,
+			"path", r.URL.Path,
+			"query", r.URL.RawQuery,
+			"content_type", r.Header.Get("Content-Type"))
+
+		// Pass through to authenticated handler
+		authenticatedAPI.ServeHTTP(w, r)
+	}))
+
+	logger.Info("API routes configured",
+		"auth_endpoints", 2,
+		"user_endpoints", 8,
+		"contact_endpoints", 3,
+		"chat_endpoints", 14,
+		"message_endpoints", 7)
 
 	// SPA catch-all route (must be last)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		// Only serve index.html for non-API routes
 		if r.URL.Path == "/" || !isAPIRoute(r.URL.Path) {
+			logger.Debug("Serving SPA index", "path", r.URL.Path, "method", r.Method)
 			http.ServeFile(w, r, "./static/index.html")
 			return
 		}
-		// For undefined API routes, return 404
+
+		// For undefined API routes, return 404 with logging
+		logger.Warn("API route not found",
+			"method", r.Method,
+			"path", r.URL.Path,
+			"remote_addr", r.RemoteAddr)
 		http.NotFound(w, r)
 	})
+
+	logger.Debug("SPA catch-all route configured", "serve_from", "./static/index.html")
 
 	return mux
 }
