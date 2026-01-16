@@ -166,9 +166,27 @@ docker-compose-down: ## Stop all services with Docker Compose
 	@$(DOCKER_COMPOSE) down
 	@echo "Services stopped."
 
+.PHONY: docker-compose-docker-volume-delete
+docker-compose-docker-volume-delete: ## Stop all services with Docker Compose
+	@echo "Stopping services..."
+	@$(DOCKER_COMPOSE) down -v
+	@echo "Services stopped."
+
 .PHONY: docker-compose-logs
 docker-compose-logs: ## View Docker Compose logs
 	@$(DOCKER_COMPOSE) logs -f
+
+.PHONY: docker-compose-logs-app
+docker-compose-logs-app: ## View Docker Compose logs
+	@$(DOCKER_COMPOSE) logs -f app
+
+.PHONY: docker-compose-logs-postgres
+docker-compose-logs-postgres: ## View Docker Compose logs
+	@$(DOCKER_COMPOSE) logs -f postgres
+
+.PHONY: docker-compose-logs-redis
+docker-compose-logs-redis: ## View Docker Compose logs
+	@$(DOCKER_COMPOSE) logs -f redis
 
 .PHONY: docker-compose-ps
 docker-ps:
@@ -251,7 +269,7 @@ swagger: ## Generate Swagger / OpenAPI documentation
 	@docker run --rm \
 		-v $$(pwd):/app \
 		-w /app \
-		golang:1.22 \
+		golang:1.24 \
 		sh -c "\
 			go install github.com/swaggo/swag/cmd/swag@latest && \
 			swag init -g cmd/main.go -o docs && \
@@ -282,7 +300,7 @@ pprof:
 	@echo "Opening pprof UI at http://localhost:7070"
 	@docker run --rm -it \
 		-p 7070:7070 \
-		golang:1.22 \
+		golang:1.24 \
 		go tool pprof -http=:7070 http://host.docker.internal:8080/debug/pprof/profile
 
 
@@ -295,7 +313,7 @@ trace:
 		-p 8081:8081 \
 		-v $$(pwd):/app \
 		-w /app \
-		golang:1.22 \
+		golang:1.24 \
 		go tool trace -http=:8081 trace.out
 
 .PHONY: jwt-secret
@@ -314,7 +332,122 @@ jwt-secret: ## Generate a secure JWT secret and copy to clipboard
 	echo ""; \
 	echo "Add this to your .env file by using paste command"; \
 	echo "JWT_SECRET=$$SECRET"
-	
+
+# ==============================================================================
+# Redis Utilities
+# ==============================================================================
+
+.PHONY: redis-cli
+redis-cli: ## Open Redis CLI inside the Redis container
+	@echo "Opening Redis CLI..."
+	@$(DOCKER_COMPOSE) exec redis redis-cli
+
+.PHONY: redis-ping
+redis-ping: ## Ping Redis to check if it is alive
+	@echo "Pinging Redis..."
+	@$(DOCKER_COMPOSE) exec redis redis-cli ping
+
+.PHONY: redis-info
+redis-info: ## Show Redis server info
+	@echo "Fetching Redis info..."
+	@$(DOCKER_COMPOSE) exec redis redis-cli info
+
+.PHONY: redis-keys
+redis-keys: ## List all Redis keys (use carefully in production)
+	@echo "Listing Redis keys..."
+	@$(DOCKER_COMPOSE) exec redis redis-cli keys '*'
+
+.PHONY: redis-flush
+redis-flush: ## Flush all Redis data (DANGEROUS)
+	@echo "Flushing ALL Redis data..."
+	@$(DOCKER_COMPOSE) exec redis redis-cli FLUSHALL
+	@echo "Redis data cleared."
+
+.PHONY: redis-memory
+redis-memory: ## Show Redis memory usage
+	@echo "Redis memory usage:"
+	@$(DOCKER_COMPOSE) exec redis redis-cli info memory
+
+.PHONY: redis-stats
+redis-stats: ## Show Redis stats
+	@echo "Redis statistics:"
+	@$(DOCKER_COMPOSE) exec redis redis-cli info stats
+
+.PHONY: redis-monitor
+redis-monitor: ## Monitor Redis commands in real-time (DEBUG use only)
+	@echo "Starting Redis MONITOR (Ctrl+C to stop)..."
+	@$(DOCKER_COMPOSE) exec redis redis-cli monitor
+
+# ==============================================================================
+# PostgreSQL Utilities
+# ==============================================================================
+
+.PHONY: pg-psql
+pg-psql: ## Open psql shell inside PostgreSQL container
+	@echo "Opening PostgreSQL shell..."
+	@$(DOCKER_COMPOSE) exec postgres psql -U usr-chitchat -d chitchat
+
+.PHONY: pg-status
+pg-status: ## Check PostgreSQL container health
+	@echo "Checking PostgreSQL health..."
+	@docker inspect --format='{{.State.Health.Status}}' \
+		$$(docker compose ps -q postgres)
+
+.PHONY: pg-tables
+pg-tables: ## List all tables in the database
+	@echo "Listing tables in chitchat DB..."
+	@$(DOCKER_COMPOSE) exec postgres \
+		psql -U usr-chitchat -d chitchat -c "\dt"
+
+.PHONY: pg-describe
+pg-describe: ## Describe a table (usage: make pg-describe TABLE=table_name)
+	@if [ -z "$(TABLE)" ]; then \
+		echo "Usage: make pg-describe TABLE=table_name"; \
+		exit 1; \
+	fi
+	@$(DOCKER_COMPOSE) exec postgres \
+		psql -U usr-chitchat -d chitchat -c "\d $(TABLE)"
+
+.PHONY: pg-count
+pg-count: ## Count rows in a table (usage: make pg-count TABLE=table_name)
+	@if [ -z "$(TABLE)" ]; then \
+		echo "Usage: make pg-count TABLE=table_name"; \
+		exit 1; \
+	fi
+	@$(DOCKER_COMPOSE) exec postgres \
+		psql -U usr-chitchat -d chitchat -c "SELECT COUNT(*) FROM $(TABLE);"
+
+.PHONY: pg-select
+pg-select: ## View data from a table (usage: make pg-select TABLE=table_name LIMIT=10)
+	@if [ -z "$(TABLE)" ]; then \
+		echo "Usage: make pg-select TABLE=table_name [LIMIT=10]"; \
+		exit 1; \
+	fi
+	@$(DOCKER_COMPOSE) exec postgres \
+		psql -U usr-chitchat -d chitchat -c "SELECT * FROM $(TABLE) LIMIT $${LIMIT:-10};"
+
+.PHONY: pg-size
+pg-size: ## Show database size
+	@$(DOCKER_COMPOSE) exec postgres \
+		psql -U usr-chitchat -d chitchat -c \
+		"SELECT pg_size_pretty(pg_database_size('chitchat'));"
+
+.PHONY: pg-connections
+pg-connections: ## Show active connections
+	@$(DOCKER_COMPOSE) exec postgres \
+		psql -U usr-chitchat -d chitchat -c \
+		"SELECT pid, usename, state, query FROM pg_stat_activity WHERE datname='chitchat';"
+
+.PHONY: pg-flush
+pg-flush: ## Drop and recreate database (DANGEROUS)
+	@echo "Dropping and recreating database chitchat..."
+	@$(DOCKER_COMPOSE) exec postgres \
+		psql -U usr-chitchat -c "DROP DATABASE IF EXISTS chitchat;"
+	@$(DOCKER_COMPOSE) exec postgres \
+		psql -U usr-chitchat -c "CREATE DATABASE chitchat;"
+	@echo "Database reset completed."
+
+
 # ==============================================================================
 # Default target
 # ==============================================================================
