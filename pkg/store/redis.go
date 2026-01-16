@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/go-redis/redis/v8"
@@ -18,9 +19,12 @@ func InitRedis(url string) *redis.Client {
 		log.Fatalf("Failed to parse Redis URL: %v", err)
 	}
 
-	// Enable TLS for secure connections
-	opt.TLSConfig = &tls.Config{
-		InsecureSkipVerify: false,
+	// Only enable TLS if the URL starts with 'rediss://' (secure redis)
+	// This allows local 'redis://' to work without certificates
+	if strings.HasPrefix(url, "rediss://") {
+		opt.TLSConfig = &tls.Config{
+			InsecureSkipVerify: true,
+		}
 	}
 
 	// Set connection pool settings
