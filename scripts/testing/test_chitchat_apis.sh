@@ -13,11 +13,11 @@ echo -e "${YELLOW}=== ChitChat API Test ===${NC}\n"
 BASE_URL="http://localhost:8080"
 
 # User Configuration - Change these as needed
-USER1_NAME="Paa"
-USER1_PHONE="9005410039"
+USER1_NAME="Manav"
+USER1_PHONE="9575417548"
 
-USER2_NAME="Maa"
-USER2_PHONE="8765951530"
+USER2_NAME="Sami"
+USER2_PHONE="8120890722"
 
 # Convert names to uppercase for variable names
 USER1_UPPER=$(echo "$USER1_NAME" | tr '[:lower:]' '[:upper:]')
@@ -94,7 +94,10 @@ register_user() {
     response=$(curl -s -X POST "$BASE_URL/api/auth/register" \
         -H "Content-Type: application/json" \
         -d "{\"phone\":\"$phone\",\"name\":\"$name\"}")
-    
+    echo "curl -s -X POST "$BASE_URL/api/auth/register" \
+        -H "Content-Type: application/json" \
+        -d "{\"phone\":\"$phone\",\"name\":\"$name\"}""
+    echo $response
     # Check if response contains error
     if echo "$response" | grep -q "error\|Error\|failed\|Failed"; then
         echo -e "${RED}Registration failed for ${name}${NC}"
@@ -139,6 +142,7 @@ register_user() {
     
     echo -e "  ${name} Token: ${token:0:30}..."
     echo -e "  ${name} ID: $user_id"
+    echo $TOKENS[$name]
     return 0
 }
 
@@ -159,6 +163,10 @@ search_user() {
     local search_response
     search_response=$(curl -s -X GET "$BASE_URL/api/users/search?q=${target_name}" \
         -H "Authorization: Bearer $searcher_token")
+    
+    echo "curl -s -X GET "$BASE_URL/api/users/search?q=${target_name}" \
+        -H "Authorization: Bearer $searcher_token""
+    echo $search_response
     
     RESPONSES["${searcher_name}_search_${target_name}"]="$search_response"
     
@@ -196,6 +204,12 @@ create_chat() {
         -H "Content-Type: application/json" \
         -d "{\"type\":\"direct\",\"user_ids\":[\"$other_id\"]}")
     
+    echo "curl -s -X POST "$BASE_URL/api/chats" \
+        -H "Authorization: Bearer $creator_token" \
+        -H "Content-Type: application/json" \
+        -d "{\"type\":\"direct\",\"user_ids\":[\"$other_id\"]}""
+    echo $chat_response
+
     RESPONSES["chat_${creator_name}_${other_name}"]="$chat_response"
     
     echo -e "${BLUE}Chat Response:${NC}"
@@ -246,6 +260,12 @@ send_message() {
         -H "Content-Type: application/json" \
         -d "{\"chat_id\":\"$CHAT_ID\",\"content\":\"Hello ${receiver_name}!\",\"content_type\":\"text\"}")
     
+    echo "curl -s -X POST "$BASE_URL/api/messages" \
+        -H "Authorization: Bearer $sender_token" \
+        -H "Content-Type: application/json" \
+        -d "{\"chat_id\":\"$CHAT_ID\",\"content\":\"Hello ${receiver_name}!\",\"content_type\":\"text\"}""
+    echo $message_response
+
     RESPONSES["message_${sender_name}_to_${receiver_name}"]="$message_response"
     
     echo -e "${BLUE}Message Response:${NC}"
@@ -293,6 +313,10 @@ get_messages() {
     messages_response=$(curl -s -X GET "$BASE_URL/api/messages?chat_id=$CHAT_ID&offset=0&limit=50" \
         -H "Authorization: Bearer $user_token")
     
+    echo "curl -s -X GET "$BASE_URL/api/messages?chat_id=$CHAT_ID&offset=0&limit=50" \
+        -H "Authorization: Bearer $user_token""
+    echo $messages_response
+
     RESPONSES["messages_${user_name}"]="$messages_response"
     
     echo -e "${BLUE}Messages Response:${NC}"
@@ -328,6 +352,12 @@ update_message_status() {
         -H "Content-Type: application/json" \
         -d "{\"message_id\":\"$MESSAGE_ID\",\"status\":\"$status\"}")
     
+    echo "curl -s -X POST "$BASE_URL/api/messages/status" \
+        -H "Authorization: Bearer $user_token" \
+        -H "Content-Type: application/json" \
+        -d "{\"message_id\":\"$MESSAGE_ID\",\"status\":\"$status\"}""
+    echo $status_response
+
     RESPONSES["status_${user_name}_${status}"]="$status_response"
     
     echo -e "${BLUE}Status Update Response:${NC}"
@@ -359,6 +389,9 @@ echo -e "  JSON Parser: $JSON_PARSER\n"
 echo -e "${YELLOW}=== Registration Phase ===${NC}"
 register_user "$USER1_NAME" "$USER1_PHONE" || exit 1
 register_user "$USER2_NAME" "$USER2_PHONE" || exit 1
+
+echo "BOTH TOKENS: "$TOKENS
+
 
 # Search for user
 echo -e "\n${YELLOW}=== Search Phase ===${NC}"
