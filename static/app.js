@@ -776,16 +776,24 @@ class ChitChat {
         div.className = 'chat-item';
         div.dataset.chatId = chat.id;
         
-        // For direct chats, find the other participant
+        // FIX: Get the correct chat name for direct chats
         let chatName = chat.name || 'Direct Chat';
         let lastMessage = 'No messages yet';
         let timestamp = '';
         let unreadCount = '';
         
-        if (chat.type === 'direct' && chat.participants) {
-            const otherUser = chat.participants.find(p => p.id !== this.user?.id);
-            if (otherUser) {
-                chatName = otherUser.name || otherUser.phone || 'Unknown';
+        if (chat.type === 'direct') {
+            // Try different ways to get the other user's name
+            if (chat.participants && Array.isArray(chat.participants)) {
+                const otherUser = chat.participants.find(p => p.id !== this.user?.id);
+                if (otherUser) {
+                    chatName = otherUser.name || otherUser.phone || 'Unknown';
+                }
+            } else if (chat.users && Array.isArray(chat.users)) {
+                const otherUser = chat.users.find(p => p.id !== this.user?.id);
+                if (otherUser) {
+                    chatName = otherUser.name || otherUser.phone || 'Unknown';
+                }
             }
         }
         
