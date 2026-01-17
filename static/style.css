@@ -851,4 +851,265 @@ input[type="text"] {
     .right-panel {
         width: 100%;
     }
+    /* Dropdown menu */
+.dropdown-menu {
+    position: absolute;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+    padding: 8px 0;
+    min-width: 200px;
+    z-index: 1000;
+    display: none;
+    border: 1px solid #e0e0e0;
+}
+
+.dropdown-menu.show {
+    display: block;
+}
+
+.dropdown-menu ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.dropdown-menu li {
+    margin: 0;
+}
+
+.dropdown-menu a {
+    display: flex;
+    align-items: center;
+    padding: 12px 16px;
+    color: #333;
+    text-decoration: none;
+    transition: background 0.2s;
+}
+
+.dropdown-menu a:hover {
+    background: #f5f5f5;
+}
+
+.dropdown-menu a i {
+    margin-right: 10px;
+    width: 20px;
+    text-align: center;
+}
+
+.dropdown-menu hr {
+    margin: 8px 0;
+    border: none;
+    border-top: 1px solid #e0e0e0;
+}
+
+.dropdown-menu .logout {
+    color: #f44336;
+}
+
+.dropdown-menu .danger {
+    color: #f44336;
+}
+
+/* User actions in modal */
+.user-actions {
+    display: flex;
+    gap: 8px;
+    margin-left: auto;
+}
+
+.user-actions button {
+    padding: 6px 12px;
+    font-size: 14px;
+}
+
+.btn-text {
+    background: none;
+    border: none;
+    color: #667eea;
+    cursor: pointer;
+    padding: 6px 12px;
+    font-size: 14px;
+}
+
+.btn-text:hover {
+    text-decoration: underline;
+}
+
+.remove-contact-btn {
+    color: #f44336;
+}
+
+/* Settings */
+.settings-container {
+    padding: 20px;
+}
+
+.settings-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 0;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.settings-item:last-child {
+    border-bottom: none;
+}
+
+/* Toggle switch */
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 50px;
+    height: 24px;
+}
+
+.switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #ccc;
+    transition: .4s;
+    border-radius: 24px;
+}
+
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 16px;
+    width: 16px;
+    left: 4px;
+    bottom: 4px;
+    background-color: white;
+    transition: .4s;
+    border-radius: 50%;
+}
+
+input:checked + .slider {
+    background-color: #667eea;
+}
+
+input:checked + .slider:before {
+    transform: translateX(26px);
+}
+
+/* Profile modal */
+.profile-modal .modal-content {
+    max-width: 400px;
+}
+
+.profile-header {
+    text-align: center;
+    padding: 20px 0;
+}
+
+.profile-avatar.large {
+    width: 80px;
+    height: 80px;
+    font-size: 32px;
+    margin: 0 auto 16px;
+}
+
+.profile-info {
+    margin-top: 20px;
+}
+
+.info-item {
+    margin-bottom: 16px;
+}
+
+.info-item label {
+    font-weight: bold;
+    color: #666;
+    display: block;
+    margin-bottom: 4px;
+}
+
+/* Toast notifications */
+@keyframes slideIn {
+    from { transform: translateX(100%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes slideOut {
+    from { transform: translateX(0); opacity: 1; }
+    to { transform: translateX(100%); opacity: 0; }
+}
+
+.toast {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    padding: 12px 24px;
+    border-radius: 8px;
+    z-index: 1000;
+    animation: slideIn 0.3s ease;
+    max-width: 300px;
+    word-wrap: break-word;
+    font-family: inherit;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+.toast-info {
+    background: #4CAF50;
+    color: white;
+}
+
+.toast-error {
+    background: #f44336;
+    color: white;
+}
+
+/* Tab buttons active state */
+.tab-btn.active {
+    background: rgba(102, 126, 234, 0.1);
+    color: #667eea;
+}
+
+/* User item in modal */
+.user-item {
+    display: flex;
+    align-items: center;
+    padding: 12px;
+    border-bottom: 1px solid #f0f0f0;
+    cursor: pointer;
+}
+
+.user-item:hover {
+    background: #f9f9f9;
+}
+
+.user-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 12px;
+    font-weight: bold;
+}
+
+.user-info h4 {
+    margin: 0 0 4px 0;
+    font-size: 16px;
+}
+
+.user-info p {
+    margin: 0;
+    font-size: 14px;
+    color: #666;
+}
 }
