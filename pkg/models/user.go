@@ -4,6 +4,7 @@ import (
 	"time"
 )
 
+// @name User
 type User struct {
 	ID        string    `json:"id" db:"id"`
 	Phone     string    `json:"phone" db:"phone"`
@@ -16,6 +17,7 @@ type User struct {
 	IsOnline  bool      `json:"is_online,omitempty" db:"-"`
 }
 
+// @name UserSession
 type UserSession struct {
 	UserID     string    `json:"user_id" db:"user_id"`
 	SessionID  string    `json:"session_id" db:"session_id"`
@@ -26,6 +28,7 @@ type UserSession struct {
 	IsActive   bool      `json:"is_active" db:"is_active"`
 }
 
+// @name Contact
 type Contact struct {
 	UserID      string    `json:"user_id" db:"user_id"`
 	ContactID   string    `json:"contact_id" db:"contact_id"`
@@ -33,12 +36,14 @@ type Contact struct {
 	CreatedAt   time.Time `json:"created_at" db:"created_at"`
 }
 
+// @name UserPresence
 type UserPresence struct {
 	UserID   string    `json:"user_id"`
 	IsOnline bool      `json:"is_online"`
 	LastSeen time.Time `json:"last_seen,omitempty"`
 }
 
+// @name AuthRequest
 type AuthRequest struct {
 	Phone    string `json:"phone"`
 	Name     string `json:"name"`
@@ -52,8 +57,8 @@ type AuthResponse struct {
 }
 
 type UserUpdateRequest struct {
-	Name   string `json:"name,omitempty"`
-	Status string `json:"status,omitempty"`
+	Name   *string `json:"name,omitempty"`
+	Status *string `json:"status,omitempty"`
 }
 
 type SearchUserRequest struct {

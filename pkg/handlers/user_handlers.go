@@ -7,7 +7,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/msniranjan18/chit-chat/pkg/auth"
+	"github.com/msniranjan18/common/middleware/auth"
+
 	"github.com/msniranjan18/chit-chat/pkg/models"
 	"github.com/msniranjan18/chit-chat/pkg/store"
 )
@@ -21,6 +22,15 @@ func NewUserHandler(store *store.Store, logger *slog.Logger) *UserHandler {
 	return &UserHandler{store: store, logger: logger}
 }
 
+// GetCurrentUser godoc
+// @Summary      Get current user profile
+// @Description  Retrieve the profile details of the currently authenticated user
+// @Tags         users
+// @Produce      json
+// @Success      200  {object}  models.User
+// @Failure      401  {object}  map[string]string "Unauthorized"
+// @Failure      404  {object}  map[string]string "User not found"
+// @Router       /api/users/me [get]
 func (h *UserHandler) GetCurrentUser(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		h.logger.Warn("GetCurrentUser: method not allowed", "method", r.Method)
@@ -56,6 +66,17 @@ func (h *UserHandler) GetCurrentUser(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(user)
 }
 
+// UpdateUser godoc
+// @Summary      Update user profile
+// @Description  Update name or status for the current user
+// @Tags         users
+// @Accept       json
+// @Produce      json
+// @Param        updates  body      models.UserUpdateRequest  true  "User Update Request"
+// @Success      200      {object}  models.User
+// @Failure      400      {object}  map[string]string "Invalid request body"
+// @Failure      401      {object}  map[string]string "Unauthorized"
+// @Router       /api/users/me [put]
 func (h *UserHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPut && r.Method != http.MethodPatch {
 		h.logger.Warn("UpdateUser: method not allowed", "method", r.Method)
@@ -103,6 +124,17 @@ func (h *UserHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(user)
 }
 
+// SearchUsers godoc
+// @Summary      Search for users
+// @Description  Find users by phone number or name
+// @Tags         users
+// @Produce      json
+// @Param        q      query     string  true  "Search query"
+// @Param        limit  query     int     false "Limit results (default 20)"
+// @Success      200    {array}   models.User
+// @Failure      400    {object}  map[string]string "Query required"
+// @Failure      401    {object}  map[string]string "Unauthorized"
+// @Router       /api/users/search [get]
 func (h *UserHandler) SearchUsers(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		h.logger.Warn("SearchUsers: method not allowed", "method", r.Method)
@@ -161,6 +193,16 @@ func (h *UserHandler) SearchUsers(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(filteredUsers)
 }
 
+// GetUser godoc
+// @Summary      Get user by ID
+// @Description  Retrieve profile details for a specific user ID
+// @Tags         users
+// @Produce      json
+// @Param        id   path      string  true  "User ID"
+// @Success      200  {object}  models.User
+// @Failure      400  {object}  map[string]string "ID required"
+// @Failure      404  {object}  map[string]string "User not found"
+// @Router       /api/users/{id} [get]
 func (h *UserHandler) GetUser(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		h.logger.Warn("GetUser: method not allowed", "method", r.Method)
@@ -207,6 +249,14 @@ func (h *UserHandler) GetUser(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(user)
 }
 
+// GetContacts godoc
+// @Summary      Get user contacts
+// @Description  Retrieve the contact list for the current user
+// @Tags         contacts
+// @Produce      json
+// @Success      200  {array}   models.User
+// @Failure      401  {object}  map[string]string "Unauthorized"
+// @Router       /api/contacts [get]
 func (h *UserHandler) GetContacts(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		h.logger.Warn("GetContacts: method not allowed", "method", r.Method)
@@ -238,6 +288,17 @@ func (h *UserHandler) GetContacts(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(contacts)
 }
 
+// AddContact godoc
+// @Summary      Add a contact
+// @Description  Add another user to the current user's contact list
+// @Tags         contacts
+// @Accept       json
+// @Produce      json
+// @Param        contact  body      object  true  "Contact Request (user_id required)"
+// @Success      201      {object}  map[string]string "Contact added"
+// @Failure      400      {object}  map[string]string "Invalid request"
+// @Failure      404      {object}  map[string]string "User not found"
+// @Router       /api/contacts [post]
 func (h *UserHandler) AddContact(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		h.logger.Warn("AddContact: method not allowed", "method", r.Method)
@@ -312,6 +373,15 @@ func (h *UserHandler) AddContact(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// RemoveContact godoc
+// @Summary      Remove a contact
+// @Description  Delete a user from the current user's contact list
+// @Tags         contacts
+// @Param        id   path  string  true  "Contact User ID"
+// @Success      204  "No Content"
+// @Failure      400  {object}  map[string]string "ID required"
+// @Failure      401  {object}  map[string]string "Unauthorized"
+// @Router       /api/contacts/{id} [delete]
 func (h *UserHandler) RemoveContact(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodDelete {
 		h.logger.Warn("RemoveContact: method not allowed", "method", r.Method)
@@ -349,6 +419,14 @@ func (h *UserHandler) RemoveContact(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// GetOnlineUsers godoc
+// @Summary      Get online users
+// @Description  Retrieve a list of users currently marked as online
+// @Tags         users
+// @Produce      json
+// @Success      200  {array}   models.User
+// @Failure      401  {object}  map[string]string "Unauthorized"
+// @Router       /api/users/online [get]
 func (h *UserHandler) GetOnlineUsers(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		h.logger.Warn("GetOnlineUsers: method not allowed", "method", r.Method)
@@ -394,6 +472,14 @@ func (h *UserHandler) GetOnlineUsers(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(users)
 }
 
+// GetUserSessions godoc
+// @Summary      Get user sessions
+// @Description  Retrieve the active login sessions for the current user
+// @Tags         users
+// @Produce      json
+// @Success      200  {array}   models.UserSession
+// @Failure      401  {object}  map[string]string "Unauthorized"
+// @Router       /api/users/sessions [get]
 func (h *UserHandler) GetUserSessions(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		h.logger.Warn("GetUserSessions: method not allowed", "method", r.Method)

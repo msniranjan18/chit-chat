@@ -4,6 +4,7 @@ import (
 	"time"
 )
 
+// @name Message
 type Message struct {
 	ID           string     `json:"id" db:"id"`
 	ChatID       string     `json:"chat_id" db:"chat_id"`
@@ -51,6 +52,7 @@ const (
 	ContentTypeSticker  ContentType = "sticker"
 )
 
+// @name MessageRequest
 type MessageRequest struct {
 	ChatID      string  `json:"chat_id"`
 	Content     string  `json:"content"`
@@ -60,28 +62,33 @@ type MessageRequest struct {
 	Forwarded   bool    `json:"forwarded,omitempty"`
 }
 
+// @name MessageUpdateRequest
 type MessageUpdateRequest struct {
 	Content string `json:"content,omitempty"`
 }
 
+// @name MessageStatusUpdate
 type MessageStatusUpdate struct {
 	MessageID string `json:"message_id"`
 	Status    string `json:"status"`
 	ChatID    string `json:"chat_id,omitempty"`
 }
 
+// @name TypingIndicator
 type TypingIndicator struct {
 	ChatID   string `json:"chat_id"`
 	UserID   string `json:"user_id"`
 	IsTyping bool   `json:"is_typing"`
 }
 
+// @name MessageResponse
 type MessageResponse struct {
 	Message  Message `json:"message"`
 	ChatInfo Chat    `json:"chat_info,omitempty"`
 	Users    []User  `json:"users,omitempty"`
 }
 
+// @name BulkMessageStatusUpdate
 type BulkMessageStatusUpdate struct {
 	MessageIDs []string `json:"message_ids"`
 	Status     string   `json:"status"`

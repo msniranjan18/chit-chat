@@ -29,5 +29,9 @@ go.work.sum
 test_variables.env
 
 # Editor/IDE
-# .idea/
-# .vscode/
+.idea/
+.vscode/
+
+*.log
+
+bin/

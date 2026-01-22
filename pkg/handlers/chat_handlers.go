@@ -6,7 +6,8 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/msniranjan18/chit-chat/pkg/auth"
+	"github.com/msniranjan18/common/middleware/auth"
+
 	"github.com/msniranjan18/chit-chat/pkg/models"
 	"github.com/msniranjan18/chit-chat/pkg/store"
 )
@@ -20,6 +21,15 @@ func NewChatHandler(store *store.Store, logger *slog.Logger) *ChatHandler {
 	return &ChatHandler{store: store, logger: logger}
 }
 
+// GetChats godoc
+// @Summary      Get user chats
+// @Description  Retrieve a list of all chats (Direct and Group) that the current user is a member of
+// @Tags         chats
+// @Produce      json
+// @Success      200  {object}  models.ChatListResponse
+// @Failure      401  {object}  map[string]string "Unauthorized"
+// @Failure      500  {object}  map[string]string "Internal Server Error"
+// @Router       /api/chats [get]
 func (h *ChatHandler) GetChats(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -56,6 +66,16 @@ func (h *ChatHandler) GetChats(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
+// GetChat godoc
+// @Summary      Get chat details
+// @Description  Retrieve detailed information about a specific chat, including member list and user details
+// @Tags         chats
+// @Produce      json
+// @Param        id   path      string  true  "Chat ID"
+// @Success      200  {object}  models.ChatResponse
+// @Failure      401  {object}  map[string]string "Unauthorized"
+// @Failure      404  {object}  map[string]string "Chat not found"
+// @Router       /api/chats/{id} [get]
 func (h *ChatHandler) GetChat(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -138,6 +158,18 @@ func (h *ChatHandler) GetChat(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
+// CreateChat godoc
+// @Summary      Create a new chat
+// @Description  Create a new direct chat (1-on-1) or group chat
+// @Tags         chats
+// @Accept       json
+// @Produce      json
+// @Param        chat  body      models.ChatRequest  true  "Chat Creation Request"
+// @Success      201   {object}  models.ChatResponse
+// @Success      200   {object}  models.ChatResponse "Returned if direct chat already exists"
+// @Failure      400   {object}  map[string]string "Invalid request"
+// @Failure      401   {object}  map[string]string "Unauthorized"
+// @Router       /api/chats [post]
 func (h *ChatHandler) CreateChat(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -242,6 +274,18 @@ func (h *ChatHandler) CreateChat(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
+// UpdateChat godoc
+// @Summary      Update chat details
+// @Description  Update name, description, or settings for a specific chat (Admins only)
+// @Tags         chats
+// @Accept       json
+// @Produce      json
+// @Param        id      path      string                    true  "Chat ID"
+// @Param        updates body      models.ChatUpdateRequest  true  "Chat Update Fields"
+// @Success      200     {object}  models.Chat
+// @Failure      400     {object}  map[string]string "Invalid request"
+// @Failure      404     {object}  map[string]string "Chat not found"
+// @Router       /api/chats/{id} [put]
 func (h *ChatHandler) UpdateChat(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPut && r.Method != http.MethodPatch {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -310,6 +354,15 @@ func (h *ChatHandler) UpdateChat(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(chat)
 }
 
+// DeleteChat godoc
+// @Summary      Delete a chat
+// @Description  Permanently delete a chat and all its messages (Creator only)
+// @Tags         chats
+// @Param        id   path      string  true  "Chat ID"
+// @Success      204  "No Content"
+// @Failure      403  {object}  map[string]string "Forbidden - Only creator can delete"
+// @Failure      404  {object}  map[string]string "Chat not found"
+// @Router       /api/chats/{id} [delete]
 func (h *ChatHandler) DeleteChat(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodDelete {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -362,6 +415,17 @@ func (h *ChatHandler) DeleteChat(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// GetChatMembers godoc
+// @Summary      Get members of a chat
+// @Description  Retrieve a list of all members in a specific chat, including their roles and join dates. The requester must be a member of the chat.
+// @Tags         chats
+// @Produce      json
+// @Param        id   path      string  true  "Chat ID"
+// @Success      200  {array}   models.ChatMember
+// @Failure      401  {object}  map[string]string "Unauthorized"
+// @Failure      404  {object}  map[string]string "Chat not found or access denied"
+// @Failure      500  {object}  map[string]string "Internal Server Error"
+// @Router       /api/chats/{id}/members [get]
 func (h *ChatHandler) GetChatMembers(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -409,6 +473,15 @@ func (h *ChatHandler) GetChatMembers(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(members)
 }
 
+// AddChatMember godoc
+// @Summary      Add member to chat
+// @Description  Add a new user to an existing group chat
+// @Tags         chats
+// @Accept       json
+// @Param        id      path      string                    true  "Chat ID"
+// @Param        member  body      models.ChatMemberRequest  true  "Member Details"
+// @Success      201     {object}  map[string]string "Member added successfully"
+// @Router       /api/chats/{id}/members [post]
 func (h *ChatHandler) AddChatMember(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -478,6 +551,14 @@ func (h *ChatHandler) AddChatMember(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// RemoveChatMember godoc
+// @Summary      Remove member from chat
+// @Description  Remove a specific user from a group chat
+// @Tags         chats
+// @Param        id        path      string  true  "Chat ID"
+// @Param        memberId  path      string  true  "User ID to remove"
+// @Success      204       "No Content"
+// @Router       /api/chats/{id}/members/{memberId} [delete]
 func (h *ChatHandler) RemoveChatMember(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodDelete {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -533,6 +614,13 @@ func (h *ChatHandler) RemoveChatMember(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// LeaveChat godoc
+// @Summary      Leave a chat
+// @Description  Remove yourself from a group chat
+// @Tags         chats
+// @Param        id   path      string  true  "Chat ID"
+// @Success      200  {object}  map[string]string "Left chat successfully"
+// @Router       /api/chats/{id}/leave [post]
 func (h *ChatHandler) LeaveChat(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -588,6 +676,13 @@ func (h *ChatHandler) LeaveChat(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// MarkChatAsRead godoc
+// @Summary      Mark chat as read
+// @Description  Mark all messages in a chat as read for the current user
+// @Tags         chats
+// @Param        id   path      string  true  "Chat ID"
+// @Success      200  {object}  map[string]string "Chat marked as read"
+// @Router       /api/chats/{id}/read [post]
 func (h *ChatHandler) MarkChatAsRead(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -636,6 +731,16 @@ func (h *ChatHandler) MarkChatAsRead(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// SearchChats godoc
+// @Summary      Search user chats
+// @Description  Search for chats by name or description
+// @Tags         chats
+// @Produce      json
+// @Param        q      query     string  true  "Search query"
+// @Param        type   query     string  false "Filter by type (direct/group)"
+// @Param        limit  query     int     false "Limit results"
+// @Success      200    {array}   models.Chat
+// @Router       /api/chats/search [get]
 func (h *ChatHandler) SearchChats(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)

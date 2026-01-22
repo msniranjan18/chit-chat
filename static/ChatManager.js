@@ -1,6 +1,8 @@
 // ChatManager.js - Contains all chat-related logic and API calls
 class ChatManager {
-    constructor() {}
+    constructor(appInstance) {
+        this.app = appInstance
+    }
 
     // Chat Operations
     async loadChats() {
@@ -152,13 +154,20 @@ class ChatManager {
             if (!response.ok) throw new Error('Failed to load users');
             
             const users = await response.json();
-            this.app.uiManager.renderUserList(users);
             
-            users.forEach(user => {
-                this.app.users.set(user.id, user);
-            });
+            // Check if users is an array
+            if (Array.isArray(users)) {
+                this.app.uiManager.renderUserList(users);
+                
+                users.forEach(user => {
+                    this.app.users.set(user.id, user);
+                });
+            } else {
+                this.app.uiManager.renderUserList([]);
+            }
         } catch (error) {
             console.error('Error loading users:', error);
+            this.app.uiManager.renderUserList([]);
         }
     }
 
@@ -200,9 +209,12 @@ class ChatManager {
             const user = this.app.users.get(userId);
             if (user) {
                 this.app.contacts.set(userId, user);
-                this.app.uiManager.renderUserList(Array.from(this.app.users.values()));
+                // Check if users exists before rendering
+                const usersArray = Array.from(this.app.users.values());
+                if (usersArray && usersArray.length > 0) {
+                    this.app.uiManager.renderUserList(usersArray);
+                }
             }
-            
         } catch (error) {
             console.error('Error adding contact:', error);
             this.app.uiManager.showError('Failed to add contact');
@@ -235,16 +247,34 @@ class ChatManager {
                 headers: { 'Authorization': `Bearer ${this.app.token}` }
             });
             
-            if (!response.ok) throw new Error('Failed to load contacts');
+            if (!response.ok) {
+                // If 404 or empty response, treat as no contacts
+                if (response.status === 404) {
+                    this.app.contacts.clear();
+                    return;
+                }
+                throw new Error('Failed to load contacts');
+            }
             
             const contacts = await response.json();
             this.app.contacts.clear();
             
-            contacts.forEach(user => {
-                this.app.contacts.set(user.id, user);
-            });
+            // Handle null or undefined response
+            if (contacts && Array.isArray(contacts)) {
+                contacts.forEach(user => {
+                    this.app.contacts.set(user.id, user);
+                });
+            } else {
+                // If contacts is null/undefined, just clear the map
+                this.app.contacts.clear();
+            }
         } catch (error) {
             console.error('Error loading contacts:', error);
+            // Don't show error for empty contacts, just clear
+            if (error.message !== 'Failed to load contacts') {
+                this.app.uiManager.showError('Failed to load contacts');
+            }
+            this.app.contacts.clear();
         }
     }
 
@@ -364,3 +394,8 @@ class ChatManager {
         }
     }
 }
+
+// Export for use in other modules
+export { ChatManager };
+
+window.ChatManager = ChatManager;

@@ -4,11 +4,13 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/msniranjan18/chit-chat/pkg/auth"
+	"github.com/msniranjan18/common/middleware/auth"
+
 	"github.com/msniranjan18/chit-chat/pkg/handlers"
 	"github.com/msniranjan18/chit-chat/pkg/hub"
 	"github.com/msniranjan18/chit-chat/pkg/store"
 
+	_ "github.com/msniranjan18/chit-chat/docs"
 	_ "github.com/swaggo/files"
 	httpSwagger "github.com/swaggo/http-swagger"
 )

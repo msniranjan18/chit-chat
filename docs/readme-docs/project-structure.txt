@@ -1,5 +1,6 @@
 chit-chat/
-├── main.go                 # Application entry point
+├── cmd
+│   ├──main.go                 # Application entry point
 ├── go.mod                  # Go module definition
 ├── .env.example           # Environment variables template
 ├── Dockerfile             # Docker container definition

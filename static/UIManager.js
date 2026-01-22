@@ -1,7 +1,8 @@
 // UIManager.js - Contains all UI-related functions
 class UIManager {
-    constructor() {}
-
+    constructor(appInstance) {
+        this.app = appInstance;
+    }
     // UI Display Functions
     showChatScreen() {
         document.getElementById('auth-screen').classList.add('hidden');
@@ -269,7 +270,8 @@ class UIManager {
         const container = document.getElementById('chat-list');
         container.innerHTML = '';
         
-        if (this.app.contacts.size === 0) {
+        // Check if contacts is defined and has size
+        if (!this.app.contacts || this.app.contacts.size === 0) {
             container.innerHTML = `
                 <div class="empty-chat-list">
                     <p>No contacts yet</p>
@@ -283,7 +285,9 @@ class UIManager {
             return;
         }
         
-        Array.from(this.app.contacts.values()).forEach(user => {
+        // Convert to array safely
+        const contactsArray = Array.from(this.app.contacts.values());
+        contactsArray.forEach(user => {
             const element = this.createContactElement(user);
             container.appendChild(element);
         });
@@ -588,3 +592,8 @@ class UIManager {
         `;
     }
 }
+
+// Export for use in other modules
+export { UIManager };
+
+window.UIManager = UIManager;
